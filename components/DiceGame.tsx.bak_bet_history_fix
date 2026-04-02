@@ -1,0 +1,1292 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getStoredUser } from "../lib/auth";
+import { API_ENDPOINTS, apiGet, apiPost } from "../lib/gameApi";
+
+type RollCondition = "under" | "over";
+
+type RollHistoryItem = {
+  id: number;
+  roll: number;
+  win: boolean;
+  target: number;
+  condition: RollCondition;
+  amount: number;
+  profit: number;
+};
+
+type DiceBetRow = {
+  id: number;
+  amount_usd: number;
+  condition: RollCondition;
+  target: number;
+  roll: number;
+  win: boolean;
+  multiplier: number;
+  payout: number;
+  server_seed_hash: string;
+  client_seed: string;
+  nonce: number;
+  created_at: string;
+};
+
+type DiceFairState = {
+  user_id: string;
+  current_server_seed_hash: string;
+  current_client_seed: string;
+  current_nonce: number;
+  revealed_prev_server_seed: string | null;
+  revealed_prev_server_seed_hash: string | null;
+};
+
+type DiceSeedState = {
+  user_id: string;
+  server_seed_hash: string;
+  client_seed: string;
+  nonce_next: number;
+  house_edge_percent: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function formatNum(value: number) {
+  return Number.isFinite(value) ? value.toFixed(2) : "0.00";
+}
+
+export default function DiceGame() {
+  const user = getStoredUser();
+
+  const [bet, setBet] = useState(1);
+  const [target, setTarget] = useState(50);
+  const [condition, setCondition] = useState<RollCondition>("under");
+
+  const [rolling, setRolling] = useState(false);
+  const [result, setResult] = useState<number | null>(null);
+  const [win, setWin] = useState<boolean | null>(null);
+  const [error, setError] = useState("");
+
+  const [autoMode, setAutoMode] = useState(false);
+  const [autoRollCount, setAutoRollCount] = useState(10);
+  const [stopOnProfit, setStopOnProfit] = useState(0);
+  const [stopOnLoss, setStopOnLoss] = useState(0);
+
+  const [sessionProfit, setSessionProfit] = useState(0);
+  const [history, setHistory] = useState<RollHistoryItem[]>([]);
+
+  const [betsLoading, setBetsLoading] = useState(false);
+  const [betsError, setBetsError] = useState("");
+  const [betRows, setBetRows] = useState<DiceBetRow[]>([]);
+
+  const [fairLoading, setFairLoading] = useState(false);
+  const [fairError, setFairError] = useState("");
+  const [fairState, setFairState] = useState<DiceFairState | null>(null);
+
+  const [seedLoading, setSeedLoading] = useState(false);
+  const [seedError, setSeedError] = useState("");
+  const [seedState, setSeedState] = useState<DiceSeedState | null>(null);
+  const [clientSeedInput, setClientSeedInput] = useState("");
+  const [seedActionLoading, setSeedActionLoading] = useState(false);
+  const [seedActionMessage, setSeedActionMessage] = useState("");
+
+  const [showFairPanel, setShowFairPanel] = useState(false);
+
+  const [verifyServerSeed, setVerifyServerSeed] = useState("");
+  const [verifyClientSeed, setVerifyClientSeed] = useState("");
+  const [verifyNonce, setVerifyNonce] = useState(1);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyError, setVerifyError] = useState("");
+  const [verifyResult, setVerifyResult] = useState<null | {
+    ok: boolean;
+    server_seed_hash: string;
+    client_seed: string;
+    nonce: number;
+    roll: number;
+  }>(null);
+
+  const autoRollingRef = useRef(false);
+  const historyIdRef = useRef(1);
+
+  const chance = useMemo(() => {
+    return condition === "under" ? target : 100 - target;
+  }, [condition, target]);
+
+  const multiplier = useMemo(() => {
+    if (chance <= 0) return 0;
+    return 99 / chance;
+  }, [chance]);
+
+  const profitOnWin = useMemo(() => {
+    return round2(bet * multiplier - bet);
+  }, [bet, multiplier]);
+
+  function setQuickBet(mode: "half" | "double" | "max") {
+    if (mode === "half") {
+      setBet((prev) => round2(Math.max(0.1, prev / 2)));
+      return;
+    }
+    if (mode === "double") {
+      setBet((prev) => round2(prev * 2));
+      return;
+    }
+    if (mode === "max") {
+      setBet(100);
+    }
+  }
+
+  function updateTarget(value: number) {
+    setTarget(clamp(Math.floor(value), 2, 95));
+  }
+
+  async function animateRoll(finalRoll?: number) {
+    for (let i = 0; i < 12; i++) {
+      const fake = Math.random() * 100;
+      setResult(Number(fake.toFixed(2)));
+      await new Promise((r) => setTimeout(r, 55));
+    }
+
+    if (typeof finalRoll === "number") {
+      setResult(Number(Number(finalRoll).toFixed(2)));
+    }
+  }
+
+  async function loadBetHistory() {
+    if (!user) return;
+
+    setBetsLoading(true);
+    setBetsError("");
+
+    try {
+      if (!user?.user_id) {
+        setBetRows([]);
+        return;
+      }
+
+      const data = await apiGet(API_ENDPOINTS.diceBets(user.user_id));
+      setBetRows(Array.isArray(data?.bets) ? data.bets : []);
+    } catch (e: any) {
+      setBetsError(e?.message || "Failed to load bet history");
+    } finally {
+      setBetsLoading(false);
+    }
+  }
+
+  async function loadFairState() {
+    if (!user) return;
+
+    setFairLoading(true);
+    setFairError("");
+
+    try {
+      if (!user?.user_id) {
+        setFairState(null);
+        return;
+      }
+
+      const data = await apiGet(API_ENDPOINTS.diceFair(user.user_id));
+      setFairState(data || null);
+
+      if (data?.revealed_prev_server_seed) {
+        setVerifyServerSeed(data.revealed_prev_server_seed);
+      }
+      if (data?.current_client_seed) {
+        setVerifyClientSeed(data.current_client_seed);
+      }
+      if (data?.current_nonce) {
+        setVerifyNonce(Number(data.current_nonce));
+      }
+    } catch (e: any) {
+      setFairError(e?.message || "Failed to load provably fair state");
+    } finally {
+      setFairLoading(false);
+    }
+  }
+
+  async function loadSeedState() {
+    if (!user) return;
+
+    setSeedLoading(true);
+    setSeedError("");
+
+    try {
+      if (!user?.user_id) {
+        setSeedState(null);
+        setClientSeedInput("");
+        return;
+      }
+
+      const data = await apiGet(API_ENDPOINTS.diceSeed(user.user_id));
+      setSeedState(data || null);
+      setClientSeedInput(data?.client_seed || "");
+    } catch (e: any) {
+      setSeedError(e?.message || "Failed to load seed state");
+    } finally {
+      setSeedLoading(false);
+    }
+  }
+
+  async function doRoll() {
+    if (!user) {
+      setError("User not found. Please log in again.");
+      return null;
+    }
+
+    if (!bet || bet <= 0) {
+      setError("Enter a valid bet amount.");
+      return null;
+    }
+
+    setError("");
+    setRolling(true);
+
+    try {
+      const data = await apiPost(API_ENDPOINTS.diceBet, {
+        user_id: user.user_id,
+        amount_usd: bet,
+        target,
+        condition,
+      });
+
+      await animateRoll(data.roll);
+
+      const didWin = Boolean(data.win);
+      const rollValue = Number(Number(data.roll).toFixed(2));
+      const estimatedProfit = didWin ? round2(bet * multiplier - bet) : round2(-bet);
+
+      setWin(didWin);
+      setSessionProfit((prev) => round2(prev + estimatedProfit));
+
+      const item: RollHistoryItem = {
+        id: historyIdRef.current++,
+        roll: rollValue,
+        win: didWin,
+        target,
+        condition,
+        amount: bet,
+        profit: estimatedProfit,
+      };
+
+      setHistory((prev) => [item, ...prev].slice(0, 10));
+
+      loadBetHistory();
+      loadFairState();
+      loadSeedState();
+
+      return {
+        win: didWin,
+        profit: estimatedProfit,
+      };
+    } catch (e: any) {
+      setError(e?.message || "Dice bet failed");
+      return null;
+    } finally {
+      setRolling(false);
+    }
+  }
+
+  async function handleManualRoll() {
+    if (rolling) return;
+    await doRoll();
+  }
+
+  async function handleAutoRoll() {
+    if (rolling || autoRollingRef.current) return;
+
+    if (!autoRollCount || autoRollCount <= 0) {
+      setError("Enter a valid auto roll count.");
+      return;
+    }
+
+    autoRollingRef.current = true;
+    setError("");
+
+    let total = 0;
+
+    for (let i = 0; i < autoRollCount; i++) {
+      if (!autoRollingRef.current) break;
+
+      const res = await doRoll();
+      if (!res) break;
+
+      total = round2(total + res.profit);
+
+      if (stopOnProfit > 0 && total >= stopOnProfit) break;
+      if (stopOnLoss > 0 && total <= -Math.abs(stopOnLoss)) break;
+
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    autoRollingRef.current = false;
+  }
+
+  function stopAutoRoll() {
+    autoRollingRef.current = false;
+  }
+
+  async function handleVerify() {
+    setVerifyLoading(true);
+    setVerifyError("");
+    setVerifyResult(null);
+
+    try {
+      const data = await apiPost(API_ENDPOINTS.diceVerify, {
+        server_seed: verifyServerSeed,
+        client_seed: verifyClientSeed,
+        nonce: verifyNonce,
+      });
+
+      setVerifyResult(data);
+    } catch (e: any) {
+      setVerifyError(e?.message || "Verification failed");
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
+  async function handleSetClientSeed() {
+    if (!user) return;
+    if (!clientSeedInput.trim()) {
+      setSeedError("Client seed is required.");
+      return;
+    }
+
+    setSeedActionLoading(true);
+    setSeedActionMessage("");
+    setSeedError("");
+
+    try {
+      if (!user?.user_id) {
+        throw new Error("No logged in user");
+      }
+
+      const data = await apiPost(API_ENDPOINTS.diceSetClientSeed(user.user_id), {
+        client_seed: clientSeedInput.trim(),
+      });
+
+      setSeedActionMessage(`Client seed updated to: ${data.client_seed}`);
+      await loadSeedState();
+      await loadFairState();
+    } catch (e: any) {
+      setSeedError(e?.message || "Failed to set client seed");
+    } finally {
+      setSeedActionLoading(false);
+    }
+  }
+
+  async function handleRotateSeed() {
+    if (!user) return;
+
+    setSeedActionLoading(true);
+    setSeedActionMessage("");
+    setSeedError("");
+
+    try {
+      if (!user?.user_id) {
+        throw new Error("No logged in user");
+      }
+
+      const data = await apiPost(API_ENDPOINTS.diceRotateSeed(user.user_id), {});
+
+      setSeedActionMessage(
+        `Server seed rotated. New hash: ${data.new_server_seed_hash}`
+      );
+
+      if (data?.revealed_prev_server_seed) {
+        setVerifyServerSeed(data.revealed_prev_server_seed);
+      }
+      if (data?.client_seed) {
+        setVerifyClientSeed(data.client_seed);
+      }
+      setVerifyNonce(1);
+
+      await loadSeedState();
+      await loadFairState();
+      await loadBetHistory();
+    } catch (e: any) {
+      setSeedError(e?.message || "Failed to rotate server seed");
+    } finally {
+      setSeedActionLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadBetHistory();
+    loadFairState();
+    loadSeedState();
+
+    return () => {
+      autoRollingRef.current = false;
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        background: "#0f172a",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "16px",
+        padding: "28px",
+        display: "grid",
+        gap: "22px",
+        color: "#fff",
+      }}
+    >
+      <div
+        style={{
+                    display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "12px",
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0, fontSize: "28px", fontWeight: 800 }}>Dice</h2>
+          <div style={{ color: "#94a3b8", marginTop: "6px", fontSize: "14px" }}>
+            Coin2Win Originals – improved controls, history, and provably fair tools
+          </div>
+        </div>
+
+          <button
+            onClick={() => setShowFairPanel((prev) => !prev)}
+            style={{
+              padding: "12px 16px",
+              borderRadius: "10px",
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: showFairPanel ? "#0ea5e9" : "#111827",
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {showFairPanel ? "Hide Provably Fair" : "Provably Fair"}
+          </button>
+
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: "12px",
+              background: "#111827",
+              border: "1px solid rgba(255,255,255,0.08)",
+              minWidth: "180px",
+            }}
+          >
+            <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "4px" }}>
+              Session Profit
+            </div>
+            <div
+              style={{
+                fontWeight: 800,
+                fontSize: "22px",
+                color: sessionProfit >= 0 ? "#22c55e" : "#ef4444",
+              }}
+            >
+              {sessionProfit >= 0 ? "+" : ""}
+              {formatNum(sessionProfit)}
+            </div>
+          </div>
+        </div>
+
+      {showFairPanel && (
+        <div
+          style={{
+            background: "#111827",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: "14px",
+            padding: "18px",
+            display: "grid",
+            gap: "16px",
+          }}
+        >
+          <div style={{ fontSize: "18px", fontWeight: 800 }}>Provably Fair</div>
+
+          <div
+            style={{
+              background: "#020617",
+              borderRadius: "12px",
+              border: "1px solid rgba(255,255,255,0.05)",
+              padding: "16px",
+              display: "grid",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>Seed Controls</div>
+
+            {seedLoading ? (
+              <div style={{ color: "#94a3b8" }}>Loading seed state...</div>
+            ) : seedError ? (
+              <div style={errorBoxStyle}>{seedError}</div>
+            ) : seedState ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  <InfoCard label="Current Server Seed Hash" value={seedState.server_seed_hash || "-"} />
+                  <InfoCard label="Current Client Seed" value={seedState.client_seed || "-"} />
+                  <InfoCard label="Next Nonce" value={String(seedState.nonce_next ?? "-")} />
+                  <InfoCard label="House Edge %" value={String(seedState.house_edge_percent ?? "-")} />
+                </div>
+
+                <div style={{ display: "grid", gap: "10px" }}>
+                  <div>
+                    <div style={labelStyle}>Set Client Seed</div>
+                    <input
+                      value={clientSeedInput}
+                      onChange={(e) => setClientSeedInput(e.target.value)}
+                      style={inputStyle}
+                      placeholder="Enter custom client seed"
+                    />
+                  </div>
+
+                    <button
+                      onClick={handleSetClientSeed}
+                      disabled={seedActionLoading}
+                      style={actionButtonStyle}
+                    >
+                      {seedActionLoading ? "Saving..." : "Save Client Seed"}
+                    </button>
+
+                    <button
+                      onClick={handleRotateSeed}
+                      disabled={seedActionLoading}
+                      style={{
+                        ...actionButtonStyle,
+                        background: "#f59e0b",
+                      }}
+                    >
+                      {seedActionLoading ? "Processing..." : "Rotate Server Seed"}
+                    </button>
+
+                    <button
+                      onClick={loadSeedState}
+                      style={secondaryButtonStyle}
+                    >
+                      Refresh Seed State
+                    </button>
+                  </div>
+                    {seedActionMessage ? (
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        background: "rgba(34,197,94,0.10)",
+                        border: "1px solid rgba(34,197,94,0.25)",
+                        color: "#bbf7d0",
+                        borderRadius: "10px",
+                        fontSize: "14px",
+                      }}
+                    >
+                      {seedActionMessage}
+                    </div>
+                    ) : null}
+              </>
+            ) : null}
+          </div>
+
+          {fairLoading ? (
+            <div style={{ color: "#94a3b8" }}>Loading provably fair state...</div>
+          ) : fairError ? (
+            <div style={errorBoxStyle}>{fairError}</div>
+          ) : fairState ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "12px",
+              }}
+            >
+              <InfoCard label="Current Server Seed Hash" value={fairState.current_server_seed_hash || "-"} />
+              <InfoCard label="Current Client Seed" value={fairState.current_client_seed || "-"} />
+              <InfoCard label="Current Nonce" value={String(fairState.current_nonce ?? "-")} />
+              <InfoCard
+                label="Revealed Previous Server Seed"
+                value={fairState.revealed_prev_server_seed || "Not revealed yet"}
+              />
+              <InfoCard
+                label="Revealed Previous Seed Hash"
+                value={fairState.revealed_prev_server_seed_hash || "Not revealed yet"}
+              />
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              background: "#020617",
+              borderRadius: "12px",
+              border: "1px solid rgba(255,255,255,0.05)",
+              padding: "16px",
+              display: "grid",
+              gap: "12px",
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>Verify Revealed Roll</div>
+
+            <div style={{ display: "grid", gap: "10px" }}>
+              <div>
+                <div style={labelStyle}>Server Seed</div>
+                <input
+                  value={verifyServerSeed}
+                  onChange={(e) => setVerifyServerSeed(e.target.value)}
+                  style={inputStyle}
+                  placeholder="Paste revealed server seed"
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Client Seed</div>
+                <input
+                  value={verifyClientSeed}
+                  onChange={(e) => setVerifyClientSeed(e.target.value)}
+                  style={inputStyle}
+                  placeholder="Client seed"
+                />
+              </div>
+
+              <div>
+                <div style={labelStyle}>Nonce</div>
+                <input
+                  type="number"
+                  min="1"
+                  value={verifyNonce}
+                  onChange={(e) => setVerifyNonce(Number(e.target.value))}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+                    display: "grid",
+              <button
+                onClick={handleVerify}
+                disabled={verifyLoading}
+                style={actionButtonStyle}
+              >
+                {verifyLoading ? "Verifying..." : "Verify Roll"}
+              </button>
+
+              <button
+                onClick={loadFairState}
+                style={secondaryButtonStyle}
+              >
+                Refresh Fair State
+              </button>
+            </div>
+
+            {verifyError ? <div style={errorBoxStyle}>{verifyError}</div> : null}
+
+            {verifyResult ? (
+              <div
+                style={{
+                  background: "rgba(34,197,94,0.10)",
+                  border: "1px solid rgba(34,197,94,0.25)",
+                  borderRadius: "10px",
+                  padding: "14px",
+                  display: "grid",
+                  gap: "6px",
+                }}
+              >
+                <div><b>Verified Roll:</b> {formatNum(Number(verifyResult.roll))}</div>
+                <div><b>Server Seed Hash:</b> {verifyResult.server_seed_hash}</div>
+                <div><b>Client Seed:</b> {verifyResult.client_seed}</div>
+                <div><b>Nonce:</b> {verifyResult.nonce}</div>
+              </div>
+            ) : null}
+          </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "18px",
+        }}
+      >
+        <div
+          style={{
+            background: "#111827",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: "14px",
+            padding: "18px",
+            display: "grid",
+            gap: "16px",
+          }}
+        >
+          <div>
+            <div style={{ color: "#cbd5e1", marginBottom: "8px", fontSize: "14px" }}>
+              Bet Amount
+            </div>
+            <input
+              type="number"
+              min="0.1"
+              step="0.01"
+              value={bet}
+              onChange={(e) => setBet(Number(e.target.value))}
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: "10px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "#020617",
+                color: "#fff",
+                fontSize: "16px",
+              }}
+            />
+                    display: "grid",
+              <button onClick={() => setQuickBet("half")} style={smallButtonStyle}>½</button>
+              <button onClick={() => setQuickBet("double")} style={smallButtonStyle}>2x</button>
+              <button onClick={() => setQuickBet("max")} style={smallButtonStyle}>Max</button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ color: "#cbd5e1", marginBottom: "8px", fontSize: "14px" }}>
+              Roll Type
+            </div>
+                    display: "grid",
+              <button
+                onClick={() => setCondition("under")}
+                style={{
+                  ...toggleButtonStyle,
+                  background: condition === "under" ? "#22c55e" : "#1e293b",
+                }}
+              >
+                Roll Under
+              </button>
+              <button
+                onClick={() => setCondition("over")}
+                style={{
+                  ...toggleButtonStyle,
+                  background: condition === "over" ? "#0ea5e9" : "#1e293b",
+                }}
+              >
+                Roll Over
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div
+              style={{
+                    display: "grid",
+                justifyContent: "space-between",
+                gap: "12px",
+                alignItems: "center",
+                marginBottom: "8px",
+              }}
+            >
+              <div style={{ color: "#cbd5e1", fontSize: "14px" }}>Target Number</div>
+              <input
+                type="number"
+                min="2"
+                max="95"
+                value={target}
+                onChange={(e) => updateTarget(Number(e.target.value))}
+                style={{
+                  width: "110px",
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "#020617",
+                  color: "#fff",
+                  fontSize: "15px",
+                }}
+              />
+            </div>
+
+            <input
+              type="range"
+              min="2"
+              max="95"
+              value={target}
+              onChange={(e) => updateTarget(Number(e.target.value))}
+              style={{ width: "100%" }}
+            />
+
+            <div
+              style={{
+                    display: "grid",
+                justifyContent: "space-between",
+                marginTop: "8px",
+                fontSize: "12px",
+                color: "#64748b",
+              }}
+            >
+              <span>2</span>
+              <span>{condition === "under" ? "<" : ">"} {target}</span>
+              <span>95</span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: "#020617",
+              borderRadius: "12px",
+              padding: "14px",
+              border: "1px solid rgba(255,255,255,0.05)",
+              display: "grid",
+              gap: "10px",
+            }}
+          >
+            <label
+              style={{
+                    display: "grid",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ fontSize: "14px", color: "#cbd5e1" }}>Auto Roll</span>
+              <input
+                type="checkbox"
+                checked={autoMode}
+                onChange={(e) => setAutoMode(e.target.checked)}
+              />
+            </label>
+
+            {autoMode && (
+              <div style={{ display: "grid", gap: "10px" }}>
+                <div>
+                  <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "6px" }}>
+                    Number of Rolls
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    value={autoRollCount}
+                    onChange={(e) => setAutoRollCount(Number(e.target.value))}
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "6px" }}>
+                    Stop on Profit (optional)
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={stopOnProfit}
+                    onChange={(e) => setStopOnProfit(Number(e.target.value))}
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <div style={{ color: "#94a3b8", fontSize: "13px", marginBottom: "6px" }}>
+                    Stop on Loss (optional)
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={stopOnLoss}
+                    onChange={(e) => setStopOnLoss(Number(e.target.value))}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+        <div
+          style={{
+            background: "#111827",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: "14px",
+            padding: "18px",
+            display: "grid",
+            gap: "16px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            <StatCard label="Win Chance" value={`${formatNum(chance)}%`} />
+            <StatCard label="Multiplier" value={`${formatNum(multiplier)}x`} />
+            <StatCard label="Profit on Win" value={`+${formatNum(profitOnWin)}`} />
+          </div>
+
+          <div
+            style={{
+              background: "#020617",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: "14px",
+              padding: "24px",
+              minHeight: "180px",
+              display: "grid",
+              placeItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <div>
+              <div style={{ color: "#94a3b8", fontSize: "14px", marginBottom: "10px" }}>
+                Last Roll
+              </div>
+              <div style={{ fontSize: "46px", fontWeight: 900, lineHeight: 1 }}>
+                {result !== null ? formatNum(result) : "--.--"}
+              </div>
+              <div
+                style={{
+                  marginTop: "12px",
+                  fontWeight: 800,
+                  fontSize: "18px",
+                  color: win === null ? "#94a3b8" : win ? "#22c55e" : "#ef4444",
+                }}
+              >
+                {win === null ? "Waiting for roll" : win ? "WIN 🎉" : "LOSE"}
+              </div>
+            </div>
+          </div>
+
+          {!autoMode ? (
+            <button
+              onClick={handleManualRoll}
+              disabled={rolling}
+              style={{
+                padding: "16px",
+                background: "#22c55e",
+                border: "none",
+                borderRadius: "12px",
+                fontWeight: 800,
+                fontSize: "16px",
+                color: "#fff",
+                cursor: rolling ? "not-allowed" : "pointer",
+                opacity: rolling ? 0.7 : 1,
+              }}
+            >
+              {rolling ? "Rolling..." : "Roll Dice"}
+            </button>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gap: "12px",
+                alignItems: "center",
+              }}
+            >
+              <button
+                onClick={handleAutoRoll}
+                disabled={rolling || autoRollingRef.current}
+                style={{
+                  flex: 1,
+                  minWidth: "180px",
+                  padding: "16px",
+                  background: "#0ea5e9",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: 800,
+                  fontSize: "16px",
+                  color: "#fff",
+                  cursor: rolling || autoRollingRef.current ? "not-allowed" : "pointer",
+                  opacity: rolling || autoRollingRef.current ? 0.7 : 1,
+                }}
+              >
+                {autoRollingRef.current ? "Auto Rolling..." : "Start Auto Roll"}
+              </button>
+
+              <button
+                onClick={stopAutoRoll}
+                style={{
+                  padding: "16px 22px",
+                  background: "#ef4444",
+                  border: "none",
+                  borderRadius: "12px",
+                  fontWeight: 800,
+                  fontSize: "16px",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Stop
+              </button>
+            </div>
+          )}
+
+
+          {error ? <div style={errorBoxStyle}>{error}</div> : null}
+
+          <div
+            style={{
+              background: "#020617",
+              border: "1px solid rgba(255,255,255,0.05)",
+              borderRadius: "14px",
+              padding: "14px",
+            }}
+          >
+            <div style={{ fontSize: "14px", color: "#cbd5e1", marginBottom: "12px" }}>
+              Recent Rolls
+            </div>
+
+            {history.length === 0 ? (
+              <div style={{ color: "#64748b", fontSize: "14px" }}>
+                No rolls yet.
+              </div>
+            ) : (
+              <div
+                style={{
+                    display: "grid",
+                  gap: "10px",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    alignItems: "stretch",
+                }}
+              >
+                {history.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      minWidth: "120px",
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: item.win ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                      border: item.win
+                        ? "1px solid rgba(34,197,94,0.25)"
+                        : "1px solid rgba(239,68,68,0.25)",
+                    }}
+                  >
+                    <div style={{ fontSize: "12px", color: "#94a3b8" }}>Roll</div>
+                    <div style={{ fontWeight: 800, fontSize: "22px", marginTop: "4px" }}>
+                      {formatNum(item.roll)}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "8px",
+                        fontSize: "13px",
+                        color: item.win ? "#22c55e" : "#ef4444",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {item.win ? "+" : ""}
+                      {formatNum(item.profit)}
+                    </div>
+                    <div style={{ marginTop: "6px", fontSize: "12px", color: "#94a3b8" }}>
+                      {item.condition} {item.target}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: "#111827",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: "14px",
+          padding: "18px",
+          display: "grid",
+          gap: "12px",
+        }}
+      >
+        <div
+          style={{
+                    display: "grid",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: "18px", fontWeight: 800 }}>Bet History</div>
+          <button
+            onClick={loadBetHistory}
+            style={secondaryButtonStyle}
+          >
+            Refresh History
+          </button>
+        </div>
+
+        {betsLoading ? (
+          <div style={{ color: "#94a3b8" }}>Loading bet history...</div>
+        ) : betsError ? (
+          <div style={errorBoxStyle}>{betsError}</div>
+        ) : betRows.length === 0 ? (
+          <div style={{ color: "#64748b" }}>No bet history found.</div>
+        ) : (
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                minWidth: "900px",
+              }}
+            >
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <th style={thStyle}>Time</th>
+                  <th style={thStyle}>Bet</th>
+                  <th style={thStyle}>Condition</th>
+                  <th style={thStyle}>Target</th>
+                  <th style={thStyle}>Roll</th>
+                  <th style={thStyle}>Multiplier</th>
+                  <th style={thStyle}>Payout</th>
+                  <th style={thStyle}>Result</th>
+                  <th style={thStyle}>Nonce</th>
+                  <th style={thStyle}>Client Seed</th>
+                  <th style={thStyle}>Server Seed Hash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {betRows.map((row) => (
+                  <tr
+                    key={row.id}
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.05)",
+                    }}
+                  >
+                    <td style={tdStyle}>{row.created_at}</td>
+                    <td style={tdStyle}>${formatNum(row.amount_usd)}</td>
+                    <td style={tdStyle}>{row.condition}</td>
+                    <td style={tdStyle}>{formatNum(row.target)}</td>
+                    <td style={tdStyle}>{formatNum(row.roll)}</td>
+                    <td style={tdStyle}>{formatNum(row.multiplier)}x</td>
+                    <td style={tdStyle}>${formatNum(row.payout)}</td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: row.win ? "#22c55e" : "#ef4444",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {row.win ? "WIN" : "LOSE"}
+                    </td>
+                    <td style={tdStyle}>{row.nonce}</td>
+                    <td style={tdStyle}>{row.client_seed}</td>
+                    <td style={tdStyle}>{row.server_seed_hash}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#020617",
+        border: "1px solid rgba(255,255,255,0.05)",
+        borderRadius: "12px",
+        padding: "14px",
+      }}
+    >
+      <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "6px" }}>{label}</div>
+      <div style={{ fontSize: "24px", fontWeight: 800 }}>{value}</div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: "#020617",
+        border: "1px solid rgba(255,255,255,0.05)",
+        borderRadius: "12px",
+        padding: "14px",
+        overflowWrap: "anywhere",
+      }}
+    >
+      <div style={{ color: "#94a3b8", fontSize: "12px", marginBottom: "6px" }}>{label}</div>
+      <div style={{ fontSize: "14px", fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "#0f172a",
+  color: "#fff",
+  fontSize: "14px",
+};
+
+const smallButtonStyle: React.CSSProperties = {
+  padding: "8px 14px",
+  background: "#1e293b",
+  border: "none",
+  borderRadius: "8px",
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const toggleButtonStyle: React.CSSProperties = {
+  flex: 1,
+  padding: "12px 16px",
+  border: "none",
+  borderRadius: "10px",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const labelStyle: React.CSSProperties = {
+  color: "#94a3b8",
+  fontSize: "13px",
+  marginBottom: "6px",
+};
+
+const thStyle: React.CSSProperties = {
+  padding: "12px 10px",
+  fontSize: "12px",
+  color: "#94a3b8",
+  fontWeight: 700,
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "12px 10px",
+  fontSize: "13px",
+  color: "#e5e7eb",
+  verticalAlign: "top",
+};
+
+const errorBoxStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  background: "rgba(239,68,68,0.12)",
+  border: "1px solid rgba(239,68,68,0.35)",
+  color: "#fecaca",
+  borderRadius: "10px",
+  fontSize: "14px",
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  padding: "12px 16px",
+  borderRadius: "10px",
+  border: "none",
+  background: "#22c55e",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: "10px",
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "#020617",
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
+};

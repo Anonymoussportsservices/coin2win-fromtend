@@ -1,0 +1,355 @@
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.18), transparent 24%),
+    linear-gradient(180deg, #0b1020 0%, #0f172a 45%, #08111f 100%);
+  color: #e5e7eb;
+  padding: 24px 0 48px;
+}
+
+.container {
+  width: min(1400px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.5fr 0.9fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.heroContent,
+.heroPanel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(8px);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+.heroContent {
+  padding: 28px;
+}
+
+.heroTag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #86efac;
+  margin-bottom: 14px;
+}
+
+.heroTitle {
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.05;
+  margin: 0 0 14px;
+  font-weight: 900;
+  color: #f8fafc;
+}
+
+.heroText {
+  margin: 0 0 22px;
+  color: #cbd5e1;
+  font-size: 16px;
+  line-height: 1.65;
+  max-width: 720px;
+}
+
+.heroButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.primaryBtn,
+.secondaryBtn {
+  text-decoration: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 800;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+}
+
+.primaryBtn:hover,
+.secondaryBtn:hover,
+.tab:hover,
+.card:hover {
+  transform: translateY(-2px);
+}
+
+.primaryBtn {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+}
+
+.secondaryBtn {
+  background: rgba(255, 255, 255, 0.07);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.heroPanel {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+}
+
+.statCard {
+  border-radius: 16px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.statCard strong {
+  display: block;
+  font-size: 20px;
+  color: #f8fafc;
+}
+
+.statLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  margin-bottom: 26px;
+  align-items: center;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.tabs::-webkit-scrollbar,
+.rowScroller::-webkit-scrollbar {
+  height: 8px;
+}
+
+.tabs::-webkit-scrollbar-thumb,
+.rowScroller::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.tab {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.8);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tabActive {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: white;
+  border-color: transparent;
+}
+
+.searchWrap {
+  width: min(360px, 100%);
+}
+
+.searchInput {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: #94a3b8;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #f8fafc;
+}
+
+.rowSection {
+  margin-bottom: 30px;
+}
+
+.rowScroller {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 220px);
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.rowItem {
+  min-width: 0;
+}
+
+.gridSection {
+  margin-top: 8px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card:hover {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.34);
+}
+
+.cardThumb {
+  height: 150px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(34, 197, 94, 0.22), transparent 26%),
+    radial-gradient(circle at 70% 70%, rgba(59, 130, 246, 0.18), transparent 28%),
+    linear-gradient(135deg, #1e293b, #0f172a);
+}
+
+.cardEmoji {
+  font-size: 52px;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.35));
+}
+
+.badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: white;
+}
+
+.badgeNew {
+  background: #2563eb;
+}
+
+.badgeHot {
+  background: #dc2626;
+}
+
+.badgeSoon {
+  background: #475569;
+}
+
+.cardBody {
+  padding: 14px;
+}
+
+.cardTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-bottom: 6px;
+}
+
+.cardProvider {
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.emptyState {
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+@media (max-width: 980px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .searchWrap {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-top: 16px;
+  }
+
+  .container {
+    width: min(100% - 20px, 1400px);
+  }
+
+  .heroContent {
+    padding: 20px;
+  }
+
+  .heroPanel {
+    padding: 14px;
+  }
+
+  .cardThumb {
+    height: 130px;
+  }
+
+  .rowScroller {
+    grid-auto-columns: minmax(180px, 180px);
+  }
+
+  .sectionHeader h2 {
+    font-size: 19px;
+  }
+}

@@ -1,0 +1,561 @@
+"use client";
+
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import PlayerShell from "@/components/PlayerShell";
+import FilterPills from "@/components/FilterPills";
+import { getStoredUser } from "@/lib/auth";
+import { API_ENDPOINTS, apiGet } from "@/lib/gameApi";
+
+type DiceBet = {
+  id: number;
+  amount_usd: number;
+  condition: string;
+  target: number;
+  roll: number;
+  win: boolean;
+  payout: number;
+  created_at?: string;
+  nonce?: number | null;
+  client_seed?: string | null;
+  server_seed_hash?: string | null;
+};
+
+type CrashBet = {
+  id: number;
+  round_id?: number;
+  amount_usd: number;
+  auto_cashout?: number | null;
+  status: string;
+  payout: number;
+  created_at?: string;
+};
+
+type UnifiedBet = {
+  key: string;
+  game: "dice" | "crash";
+  id: number;
+  createdAt: string;
+  amount: number;
+  payout: number;
+  profit: number;
+  statusLabel: string;
+  tone: "win" | "loss" | "neutral";
+  details: Record<string, string>;
+};
+
+function fmtMoney(value: number | undefined | null) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function fmtTime(value?: string) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function shortHash(value?: string | null, size: number = 10) {
+  const v = String(value || "").trim();
+  if (!v) return "—";
+  if (v.length <= size * 2) return v;
+  return `${v.slice(0, size)}...${v.slice(-size)}`;
+}
+
+type DatePreset = "all" | "today" | "yesterday" | "7d" | "30d";
+
+function toLocalYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getDateRangeFromPreset(preset: DatePreset) {
+  const now = new Date();
+
+  if (preset === "all") {
+    return { startDate: "", endDate: "" };
+  }
+
+  if (preset === "today") {
+    const ymd = toLocalYmd(now);
+    return { startDate: ymd, endDate: ymd };
+  }
+
+  if (preset === "yesterday") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    const ymd = toLocalYmd(d);
+    return { startDate: ymd, endDate: ymd };
+  }
+
+  if (preset === "7d") {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 6);
+    return { startDate: toLocalYmd(start), endDate: toLocalYmd(now) };
+  }
+
+  const start = new Date(now);
+  start.setDate(start.getDate() - 29);
+  return { startDate: toLocalYmd(start), endDate: toLocalYmd(now) };
+}
+
+export default function BetsPage() {
+  const user = getStoredUser();
+  const userId = user?.user_id ?? "";
+
+  const [diceBets, setDiceBets] = useState<DiceBet[]>([]);
+  const [crashBets, setCrashBets] = useState<CrashBet[]>([]);
+  const [error, setError] = useState("");
+  const [gameFilter, setGameFilter] = useState<"all" | "dice" | "crash">("all");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      if (!userId) return;
+
+      try {
+        const { startDate, endDate } = getDateRangeFromPreset(datePreset);
+
+        const diceParams = new URLSearchParams();
+        const crashParams = new URLSearchParams();
+
+        if (startDate) {
+          diceParams.set("start_date", startDate);
+          crashParams.set("start_date", startDate);
+        }
+
+        if (endDate) {
+          diceParams.set("end_date", endDate);
+          crashParams.set("end_date", endDate);
+        }
+
+        const diceUrl = diceParams.toString()
+          ? `${API_ENDPOINTS.diceBets(userId)}?${diceParams.toString()}`
+          : API_ENDPOINTS.diceBets(userId);
+
+        const crashUrl = crashParams.toString()
+          ? `${API_ENDPOINTS.crashGlobalMyBets(userId)}?${crashParams.toString()}`
+          : API_ENDPOINTS.crashGlobalMyBets(userId);
+
+        const [diceData, crashData] = await Promise.all([
+          apiGet(diceUrl).catch(() => ({ bets: [] })),
+          apiGet(crashUrl).catch(() => ({ bets: [] })),
+        ]);
+
+        setDiceBets(Array.isArray(diceData?.bets) ? diceData.bets : []);
+        setCrashBets(Array.isArray(crashData?.bets) ? crashData.bets : []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load bets");
+      }
+    }
+
+    load();
+  }, [userId, datePreset]);
+
+  const unifiedBets = useMemo<UnifiedBet[]>(() => {
+    const dice: UnifiedBet[] = diceBets.map((bet) => {
+      const amount = Number(bet.amount_usd || 0);
+      const payout = Number(bet.payout || 0);
+      const profit = payout - amount;
+
+      return {
+        key: `dice-${bet.id}`,
+        game: "dice",
+        id: bet.id,
+        createdAt: bet.created_at || "",
+        amount,
+        payout,
+        profit,
+        statusLabel: bet.win ? "Win" : "Loss",
+        tone: bet.win ? "win" : "loss",
+        details: {
+          Condition: `${bet.condition} ${bet.target}`,
+          Roll: String(bet.roll ?? "—"),
+          Nonce: String(bet.nonce ?? "—"),
+          "Client Seed": bet.client_seed || "—",
+          "Server Seed Hash": shortHash(bet.server_seed_hash),
+        },
+      };
+    });
+
+    const crash: UnifiedBet[] = crashBets.map((bet) => {
+      const amount = Number(bet.amount_usd || 0);
+      const payout = Number(bet.payout || 0);
+      const profit = payout - amount;
+      const status = String(bet.status || "Pending");
+      const lower = status.toLowerCase();
+
+      return {
+        key: `crash-${bet.id}`,
+        game: "crash",
+        id: bet.id,
+        createdAt: bet.created_at || "",
+        amount,
+        payout,
+        profit,
+        statusLabel: status,
+        tone:
+          payout > amount || ["cashed_out", "won", "win"].includes(lower)
+            ? "win"
+            : ["lost", "crashed"].includes(lower)
+            ? "loss"
+            : "neutral",
+        details: {
+          "Round ID": String(bet.round_id ?? "—"),
+          "Auto Cashout": bet.auto_cashout ? `${Number(bet.auto_cashout).toFixed(2)}x` : "—",
+        },
+      };
+    });
+
+    return [...dice, ...crash].sort((a, b) => {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
+  }, [diceBets, crashBets]);
+
+  const filteredBets = useMemo(() => {
+    if (gameFilter === "all") return unifiedBets;
+    return unifiedBets.filter((bet) => bet.game === gameFilter);
+  }, [gameFilter, unifiedBets]);
+
+  return (
+    <PlayerShell
+      title="My Bets"
+      subtitle="Review your recent Crash and Dice activity."
+    >
+      <div style={wrapStyle}>
+        {error ? <div style={errorStyle}>{error}</div> : null}
+
+        <div style={toolbarStyle}>
+          <div style={toolbarTitleWrapStyle}>
+            <div style={toolbarTitleStyle}>Bet History</div>
+            <div style={toolbarSubStyle}>{filteredBets.length} bets shown</div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#9fb2c7", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Game
+              </div>
+              <FilterPills
+                options={[
+                  { value: "all", label: "All Games" },
+                  { value: "dice", label: "Dice" },
+                  { value: "crash", label: "Crash" },
+                ]}
+                value={gameFilter}
+                onChange={(value) => setGameFilter(value as "all" | "dice" | "crash")}
+              />
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#9fb2c7", textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Date
+              </div>
+              <FilterPills
+                options={[
+                  { value: "all", label: "All Time" },
+                  { value: "today", label: "Today" },
+                  { value: "yesterday", label: "Yesterday" },
+                  { value: "7d", label: "Last 7 Days" },
+                  { value: "30d", label: "Last 30 Days" },
+                ]}
+                value={datePreset}
+                onChange={(value) => setDatePreset(value as DatePreset)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div style={listStyle}>
+          {filteredBets.length ? (
+            filteredBets.map((bet) => {
+              const isExpanded = expandedKey === bet.key;
+              const toneColor =
+                bet.tone === "win" ? "#86efac" : bet.tone === "loss" ? "#fca5a5" : "#cbd5e1";
+              const toneBg =
+                bet.tone === "win"
+                  ? "rgba(0,231,1,0.12)"
+                  : bet.tone === "loss"
+                  ? "rgba(255,93,93,0.12)"
+                  : "rgba(255,255,255,0.06)";
+
+              return (
+                <div key={bet.key} style={betCardStyle}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedKey((prev) => (prev === bet.key ? null : bet.key))}
+                    style={betButtonStyle}
+                  >
+                    <div style={betTopRowStyle}>
+                      <div style={betTopLeftStyle}>
+                        <span
+                          style={{
+                            ...gameBadgeStyle,
+                            background: bet.game === "dice" ? "rgba(14,165,233,0.15)" : "rgba(168,85,247,0.16)",
+                            color: bet.game === "dice" ? "#7dd3fc" : "#d8b4fe",
+                          }}
+                        >
+                          {bet.game === "dice" ? "Dice" : "Crash"}
+                        </span>
+
+                        <span
+                          style={{
+                            ...statusBadgeStyle,
+                            color: toneColor,
+                            background: toneBg,
+                          }}
+                        >
+                          {bet.statusLabel}
+                        </span>
+                      </div>
+
+                      <div style={betTopRightStyle}>
+                        <span style={timeStyle}>{fmtTime(bet.createdAt)}</span>
+                        <span style={expandStyle}>{isExpanded ? "▲" : "▼"}</span>
+                      </div>
+                    </div>
+
+                    <div style={metricsGridStyle}>
+                      <Metric label="Bet ID" value={`#${bet.id}`} />
+                      <Metric label="Amount" value={fmtMoney(bet.amount)} />
+                      <Metric label="Payout" value={fmtMoney(bet.payout)} />
+                      <Metric
+                        label="Profit"
+                        value={`${bet.profit > 0 ? "+" : ""}${fmtMoney(bet.profit).replace("$", "$")}`}
+                        valueColor={bet.profit > 0 ? "#86efac" : bet.profit < 0 ? "#fca5a5" : "#fff"}
+                      />
+                    </div>
+                  </button>
+
+                  {isExpanded ? (
+                    <div style={detailsWrapStyle}>
+                      {Object.entries(bet.details).map(([label, value]) => (
+                        <div key={label} style={detailItemStyle}>
+                          <div style={detailLabelStyle}>{label}</div>
+                          <div style={detailValueStyle}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : (
+            <div style={emptyStyle}>No bets found yet.</div>
+          )}
+        </div>
+      </div>
+    </PlayerShell>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div style={metricCardStyle}>
+      <div style={metricLabelStyle}>{label}</div>
+      <div style={{ ...metricValueStyle, color: valueColor || "#fff" }}>{value}</div>
+    </div>
+  );
+}
+
+const wrapStyle: CSSProperties = {
+  width: "100%",
+  maxWidth: "100%",
+  margin: "0 auto",
+  display: "grid",
+  gap: 18,
+  boxSizing: "border-box",
+};
+
+const toolbarStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const toolbarTitleWrapStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+};
+
+const toolbarTitleStyle: CSSProperties = {
+  color: "#fff",
+  fontSize: 22,
+  fontWeight: 900,
+};
+
+const toolbarSubStyle: CSSProperties = {
+  color: "#8ea3b3",
+  fontSize: 13,
+};
+
+const filterWrapStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const filterButtonStyle: CSSProperties = {
+  border: "none",
+  borderRadius: 999,
+  padding: "10px 14px",
+  fontWeight: 800,
+  fontSize: 13,
+  cursor: "pointer",
+};
+
+const listStyle: CSSProperties = {
+  display: "grid",
+  gap: 12,
+};
+
+const betCardStyle: CSSProperties = {
+  background: "#1a2c38",
+  border: "1px solid rgba(255,255,255,0.05)",
+  borderRadius: 18,
+  boxShadow: "0 14px 40px rgba(0,0,0,0.18)",
+  overflow: "hidden",
+};
+
+const betButtonStyle: CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "transparent",
+  textAlign: "left",
+  padding: 16,
+  cursor: "pointer",
+};
+
+const betTopRowStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const betTopLeftStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const betTopRightStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const gameBadgeStyle: CSSProperties = {
+  borderRadius: 999,
+  padding: "6px 10px",
+  fontWeight: 800,
+  fontSize: 12,
+};
+
+const statusBadgeStyle: CSSProperties = {
+  borderRadius: 999,
+  padding: "6px 10px",
+  fontWeight: 800,
+  fontSize: 12,
+};
+
+const timeStyle: CSSProperties = {
+  color: "#8ea3b3",
+  fontSize: 12,
+};
+
+const expandStyle: CSSProperties = {
+  color: "#8ea3b3",
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const metricsGridStyle: CSSProperties = {
+  marginTop: 14,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 10,
+};
+
+const metricCardStyle: CSSProperties = {
+  background: "rgba(255,255,255,0.05)",
+  borderRadius: 12,
+  padding: "10px 12px",
+};
+
+const metricLabelStyle: CSSProperties = {
+  color: "#8ea3b3",
+  fontSize: 11,
+  marginBottom: 4,
+};
+
+const metricValueStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 800,
+};
+
+const detailsWrapStyle: CSSProperties = {
+  borderTop: "1px solid rgba(255,255,255,0.05)",
+  padding: 16,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  background: "rgba(255,255,255,0.02)",
+};
+
+const detailItemStyle: CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  borderRadius: 12,
+  padding: "10px 12px",
+};
+
+const detailLabelStyle: CSSProperties = {
+  color: "#8ea3b3",
+  fontSize: 11,
+  marginBottom: 4,
+};
+
+const detailValueStyle: CSSProperties = {
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 700,
+  wordBreak: "break-word",
+};
+
+const emptyStyle: CSSProperties = {
+  background: "#1a2c38",
+  border: "1px solid rgba(255,255,255,0.05)",
+  borderRadius: 18,
+  padding: 18,
+  color: "#8ea3b3",
+  fontWeight: 700,
+};
+
+const errorStyle: CSSProperties = {
+  background: "rgba(239,68,68,0.12)",
+  color: "#fecaca",
+  border: "1px solid rgba(239,68,68,0.22)",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontWeight: 700,
+};
