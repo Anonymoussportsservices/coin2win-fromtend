@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const navItems = [
   { label: "Dashboard", href: "/agent/dashboard", icon: "📊" },
+  { label: "Billing", href: "/agent/billing", icon: "💼" },
   { label: "Users", href: "/agent/users", icon: "👥" },
   { label: "Deposits", href: "/agent/deposits", icon: "💳" },
   { label: "CRM", href: "/agent/crm", icon: "🎯" },
@@ -37,6 +38,24 @@ export default function AgentShell({
   const pathname = usePathname();
   const [viewerId, setViewerId] = useState("");
   const [open, setOpen] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  useEffect(() => {
+    try {
+      const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
+      if (session?.id) {
+        setSessionId(session.id);
+      } else if (pathname !== "/agent/login") {
+        window.location.href = "/agent/login";
+        return;
+      }
+    } catch {
+      if (pathname !== "/agent/login") {
+        window.location.href = "/agent/login";
+        return;
+      }
+    }
+  }, [pathname]);
+
   const [brand, setBrand] = useState<BrandData | null>(null);
 
   useEffect(() => {
@@ -44,9 +63,10 @@ export default function AgentShell({
 
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("viewer_id") || "";
+    const sessionId = JSON.parse(localStorage.getItem("agent_session_data")||"{}").id || "";
     const fromStorage = localStorage.getItem("agent_viewer_id") || "";
-    const resolved = fromUrl || fromStorage || "user_81148ba29e";
-    localStorage.setItem("agent_viewer_id", resolved);
+    const resolved = fromUrl || fromStorage || sessionId || "";
+    if (resolved) localStorage.setItem("agent_viewer_id", resolved);
     setViewerId(resolved);
 
     const host = window.location.hostname;
@@ -68,6 +88,9 @@ export default function AgentShell({
   }, [viewerId]);
 
   const brandName = brand?.brand_name || "Coin2Win";
+  if (pathname === "/agent/login") {
+    return <>{children}</>;
+  }
   const primaryColor = brand?.primary_color || "#10b981";
   const supportEmail = brand?.support_email || "";
   const supportTelegram = brand?.support_telegram || "";
@@ -109,7 +132,7 @@ export default function AgentShell({
               Viewer
             </div>
             <div className="mt-1 break-all text-sm font-bold text-slate-200">
-              {viewerId || "user_81148ba29e"}
+              {viewerId || ""}
             </div>
           </div>
 
@@ -162,39 +185,68 @@ export default function AgentShell({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+
                 <span
-                  className="hidden rounded-full border px-3 py-1 text-xs font-black text-slate-200 md:inline-flex"
+                  className="hidden md:inline-flex rounded-full border px-3 py-1 text-xs font-black text-slate-200"
                   style={{ borderColor: `${primaryColor}55`, background: `${primaryColor}22` }}
                 >
-                  {viewerId || "user_81148ba29e"}
+                  {viewerId || ""}
                 </span>
 
-                {viewerId && viewerId !== "user_81148ba29e" ? (
+                {(() => {
+                  try {
+                    const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
+                    return viewerId && session?.id && viewerId !== session.id;
+                  } catch {
+                    return false;
+                  }
+                })() && (
                   <button
                     type="button"
-                    className="hidden rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-black text-slate-200 md:inline-flex"
+                    className="flex-1 md:flex-none rounded-xl border border-yellow-400/30 bg-yellow-500/20 px-3 py-2 text-sm font-black text-yellow-300"
                     onClick={() => {
-                      localStorage.removeItem("agent_viewer_id");
-                      window.location.href = "/agent/dashboard?viewer_id=user_81148ba29e";
+                      const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
+                      localStorage.setItem("agent_viewer_id", session.id);
+                      window.location.href = "/agent/dashboard?viewer_id=" + encodeURIComponent(session.id || "");
                     }}
                   >
-                    Exit Agent View
+                    Exit Agent
                   </button>
-                ) : null}
+                )}
+
+                <button
+                  type="button"
+                  className="flex-1 md:flex-none rounded-xl border border-red-500/30 bg-red-600 px-3 py-2 text-sm font-black text-white"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("agent_session_data");
+                      localStorage.removeItem("agent_viewer_id");
+                      localStorage.removeItem("admin_key");
+                      localStorage.removeItem("coin2win_admin_key");
+                    } catch {}
+                    window.location.href = "/agent/login";
+                  }}
+                >
+                  Logout
+                </button>
 
                 <button
                   type="button"
                   className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-black text-slate-200 lg:hidden"
                   onClick={() => setOpen(true)}
                 >
+
+
                   ☰
                 </button>
+
               </div>
             </div>
           </header>
 
           <main className="min-w-0 flex-1 px-4 py-4 md:px-6 md:py-6">
+            
             {title ? (
               <div className="mb-6">
                 <h1 className="text-2xl font-black md:text-3xl">{title}</h1>

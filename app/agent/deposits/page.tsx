@@ -51,7 +51,7 @@ function statusChip(status?: string) {
 }
 
 export default function AgentDepositsPage() {
-  const [viewerId, setViewerId] = useState("user_81148ba29e");
+  const [viewerId, setViewerId] = useState("supercoin");
   const [rows, setRows] = useState<DepositRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -63,7 +63,7 @@ export default function AgentDepositsPage() {
       setLoading(true);
       setMessage("");
 
-      const currentViewerId = resolvedViewerId || viewerId || "user_81148ba29e";
+      const currentViewerId = resolvedViewerId || viewerId || "supercoin";
       const res = await fetch(`/ui-api/admin/deposits/scoped/${encodeURIComponent(currentViewerId)}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
 
@@ -84,8 +84,8 @@ export default function AgentDepositsPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("viewer_id") || "";
-    const fromStorage = localStorage.getItem("agent_viewer_id") || "";
-    const resolved = fromUrl || fromStorage || "user_81148ba29e";
+    const fromStorage = localStorage.getItem("agent_viewer_id") || localStorage.getItem("agent_viewer_id") || JSON.parse(localStorage.getItem("agent_session_data")||"{}").id || "";
+    const resolved = fromUrl || fromStorage || "supercoin";
     localStorage.setItem("agent_viewer_id", resolved);
     setViewerId(resolved);
     loadDeposits(resolved);
@@ -127,7 +127,7 @@ export default function AgentDepositsPage() {
           Review deposit invoices, amounts, status, and player activity.
         </p>
         <div className="mt-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-          Viewing: {viewerId === "user_81148ba29e" ? "Global (Admin)" : "Your Network Only"}
+          Viewing: {viewerId === "supercoin" ? "Global (Admin)" : "Your Network Only"}
         </div>
       </div>
 

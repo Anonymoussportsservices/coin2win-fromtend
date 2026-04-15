@@ -1,0 +1,4 @@
+role,parent_id,email,username,password,agent_code,is_active
+agent,supercoin,agent3@coin2win.com,agent_003,Test123!,AGENT003,true
+sub_agent,agent_001,subagent_001@coin2win.com,subagent_001,Test123!,SUB001,true
+player,agent_001,player2@test.com,player_002,Test123!,,true

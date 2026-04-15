@@ -83,7 +83,13 @@ export async function apiAuth(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text();
+  let data: any = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { raw };
+  }
 
   if (!res.ok) {
     const message =
@@ -91,7 +97,9 @@ export async function apiAuth(
         ? data.detail
         : typeof data?.message === "string"
         ? data.message
-        : "Request failed";
+        : typeof data?.raw === "string" && data.raw.trim()
+        ? data.raw.trim()
+        : `Request failed (${res.status})`;
     throw new Error(message);
   }
 

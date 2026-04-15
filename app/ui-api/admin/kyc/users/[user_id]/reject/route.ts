@@ -7,7 +7,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
   try {
     const body = await req.text();
-    const res = await fetch(`${base}/admin/kyc/users/${user_id}/reject`, {
+    const qs = req.nextUrl.searchParams.toString();
+    const res = await fetch(`${base}/admin/kyc/users/${user_id}/reject${qs ? `?${qs}` : ""}`, {
       method: "POST",
       headers: { "X-Admin-Key": adminKey, "Content-Type": "application/json" },
       body: body || "{}",

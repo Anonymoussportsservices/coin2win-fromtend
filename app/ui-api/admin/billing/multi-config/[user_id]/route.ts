@@ -6,7 +6,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ user_i
   const adminKey = process.env.ADMIN_KEY || "";
 
   try {
-    const res = await fetch(`${base}/admin/billing/multi-config/${user_id}`, {
+    const res = await fetch(`${base}/admin/billing/edges/${user_id}`, {
       cache: "no-store",
       headers: { "X-Admin-Key": adminKey },
     });
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
   try {
     const body = await req.text();
-    const res = await fetch(`${base}/admin/billing/multi-config/${user_id}`, {
+    const res = await fetch(`${base}/admin/billing/edges/${user_id}`, {
       method: "POST",
       headers: { "X-Admin-Key": adminKey, "Content-Type": "application/json" },
       body: body || "{}",

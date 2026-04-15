@@ -1,0 +1,191 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Summary = {
+  range?: string;
+  deposits?: { total?: number; count?: number };
+  withdrawals?: { completed?: number };
+  risk?: { open_withdrawals?: number };
+  cashflow?: { net?: number };
+  ggr?: {
+    total_platform_ggr?: number;
+    originals_total?: number;
+    sportsbook_total?: number;
+    vendor_casino_total?: number;
+    originals_breakdown?: Record<string, number>;
+  };
+  players?: { active?: number };
+};
+
+const RANGES = [
+  { key: "today", label: "Today" },
+  { key: "7d", label: "7D" },
+  { key: "30d", label: "30D" },
+  { key: "90d", label: "90D" },
+  { key: "180d", label: "180D" },
+];
+
+function money(v: unknown) {
+  return `$${Number(v || 0).toFixed(2)}`;
+}
+
+function Card({ title, value, sub }: { title: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">{title}</div>
+      <div className="mt-3 text-3xl font-black text-white">{value}</div>
+      {sub ? <div className="mt-2 text-sm text-slate-400">{sub}</div> : null}
+    </div>
+  );
+}
+
+export default function AgentDashboardPage() {
+  const [data, setData] = useState<Summary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [range, setRange] = useState("today");
+
+  async function load(nextRange?: string) {
+    const activeRange = nextRange || range;
+    try {
+      const res = await fetch(`/ui-api/admin/dashboard/summary-range?range=${encodeURIComponent(activeRange)}`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.detail || "Failed to load dashboard");
+      setData(json);
+      setMessage("");
+    } catch (e: any) {
+      setMessage(e?.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load(range);
+    const id = setInterval(() => load(range), 15000);
+    return () => clearInterval(id);
+  }, [range]);
+
+  const breakdown = data?.ggr?.originals_breakdown || {};
+
+  return (
+    <div className="mx-auto max-w-7xl p-6 text-white">
+      <div className="rounded-[28px] border border-white/5 bg-[linear-gradient(135deg,#1a2c38_0%,#13232d_100%)] p-7">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Operations</div>
+            <h1 className="mt-2 text-3xl font-black">Operator Dashboard</h1>
+            <p className="mt-2 text-sm text-slate-300">
+              Live risk + range-based performance without full BI overhead.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
+                  range === r.key
+                    ? "bg-sky-500 text-white"
+                    : "bg-white/10 text-slate-200 hover:bg-white/15"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+            <button
+              onClick={() => load(range)}
+              className="rounded-2xl bg-white/10 px-4 py-2 text-sm font-black text-white"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {message ? (
+        <div className="mt-5 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {message}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="mt-6 rounded-3xl border border-white/5 bg-[#1a2c38] p-6 text-slate-400">Loading dashboard...</div>
+      ) : (
+        <>
+          <div className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+            Active Range: {String(data?.range || range).toUpperCase()} • Risk is always live
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <Card title="Deposits" value={money(data?.deposits?.total)} sub={`${Number(data?.deposits?.count || 0)} confirmed`} />
+            <Card title="Completed WD" value={money(data?.withdrawals?.completed)} />
+            <Card title="Net Cashflow" value={money(data?.cashflow?.net)} />
+            <Card title="Originals GGR" value={money(data?.ggr?.originals_total)} />
+            <Card title="Active Players" value={String(Number(data?.players?.active || 0))} />
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">GGR Layers</h2>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <Card title="Platform Total" value={money(data?.ggr?.total_platform_ggr)} />
+                <Card title="Originals Total" value={money(data?.ggr?.originals_total)} />
+                <Card title="Sportsbook" value={money(data?.ggr?.sportsbook_total)} />
+                <Card title="Vendor Casino" value={money(data?.ggr?.vendor_casino_total)} />
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/5 bg-[#13232d] p-4">
+                <div className="text-sm font-black text-white">Originals Breakdown</div>
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {Object.entries(breakdown).map(([k, v]) => (
+                    <div key={k} className="rounded-2xl border border-white/5 bg-[#10202a] p-4">
+                      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">{k.replaceAll("_", " ")}</div>
+                      <div className="mt-2 text-2xl font-black text-white">{money(v)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6">
+              <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+                <h2 className="text-xl font-black">Live Risk</h2>
+                <div className="mt-4 grid gap-4">
+                  <Card title="Open Withdrawals" value={money(data?.risk?.open_withdrawals)} sub="Current live exposure" />
+                </div>
+              </div>
+            
+          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <PlayerList title="Top Winners" items={data?.player_performance?.top_winners} />
+            <PlayerList title="Top Losers" items={data?.player_performance?.top_losers} />
+          </div>
+
+        </>
+      )}
+    </div>
+  );
+}
+
+// ==== PLAYER PERFORMANCE UI ====
+function PlayerList({ title, items }: any) {
+  return (
+    <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+      <h2 className="text-xl font-black">{title}</h2>
+      <div className="mt-4 space-y-3">
+        {items?.length ? items.map((p: any) => (
+          <div key={p.user_id} className="flex justify-between text-sm">
+            <span className="text-slate-300">{p.user_id}</span>
+            <span className={p.net > 0 ? "text-green-400" : "text-red-400"}>
+              {money(p.net)}
+            </span>
+          </div>
+        )) : <div className="text-slate-500 text-sm">No data</div>}
+      </div>
+    </div>
+  );
+}

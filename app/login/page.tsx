@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -113,6 +114,11 @@ export default function LoginPage() {
           >
             {loading ? "Logging in..." : "Login"}
           </button>
+          <div className="mt-4 text-center text-sm">
+            <Link href="/forgot-password" className="text-white/70 underline underline-offset-4 hover:text-white">
+              Forgot Password?
+            </Link>
+          </div>
 
           {brand.support_email || brand.support_telegram ? (
             <div style={{ marginTop: 4, color: "#9fb0bf", fontSize: 12, lineHeight: 1.5 }}>

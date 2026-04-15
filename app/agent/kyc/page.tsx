@@ -87,6 +87,9 @@ function actionLabel(action?: string) {
 }
 
 export default function AgentKycPage() {
+  const viewerId = typeof window !== "undefined"
+    ? (localStorage.getItem("agent_viewer_id") || JSON.parse(localStorage.getItem("agent_session_data") || "{}").id || "supercoin")
+    : "supercoin";
   const [users, setUsers] = useState<KycUser[]>([]);
   const [detail, setDetail] = useState<KycDetail | null>(null);
   const [selectedId, setSelectedId] = useState("");
@@ -105,7 +108,7 @@ export default function AgentKycPage() {
     try {
       setDetailLoading(true);
       const res = await fetch(
-        `/ui-api/admin/users/${encodeURIComponent(userId)}/kyc-detail`,
+        `/ui-api/admin/kyc/users/${encodeURIComponent(userId)}?viewer_id=${encodeURIComponent(viewerId)}`,
         { cache: "no-store" }
       );
       const json = await res.json().catch(() => ({}));
@@ -124,7 +127,7 @@ export default function AgentKycPage() {
       setLoading(true);
       setMessage("");
 
-      const res = await fetch("/ui-api/admin/kyc/users", { cache: "no-store" });
+      const res = await fetch(`/ui-api/admin/kyc/users?viewer_id=${encodeURIComponent(viewerId)}`, { cache: "no-store" });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.detail || "Failed to load KYC queue");
 
@@ -162,16 +165,20 @@ export default function AgentKycPage() {
       setMessage("");
 
       const res = await fetch(
-        `/ui-api/admin/users/${encodeURIComponent(userId)}/kyc-approve`,
+        `/ui-api/admin/kyc/users/${encodeURIComponent(userId)}/approve?viewer_id=${encodeURIComponent(viewerId)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kyc_level: level }),
+          body: JSON.stringify({ level }),
         }
       );
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.detail || "Approve failed");
+      if (!res.ok) throw new Error(
+        typeof json?.detail === "string"
+          ? json.detail
+          : json?.detail?.message || "Approve failed"
+      );
 
       setMessage(`Approved ${userId} ✅ Level ${level}`);
       await loadUsers(userId);
@@ -183,23 +190,30 @@ export default function AgentKycPage() {
   }
 
   async function reject(userId: string) {
+    const reason = window.prompt("Reject reason:", "Document mismatch")?.trim();
+    if (!reason) return;
+
     try {
       setBusyId(userId);
       setMessage("");
 
       const res = await fetch(
-        `/ui-api/admin/users/${encodeURIComponent(userId)}/kyc-reject`,
+        `/ui-api/admin/kyc/users/${encodeURIComponent(userId)}/reject?viewer_id=${encodeURIComponent(viewerId)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "Rejected by admin" }),
+          body: JSON.stringify({ reason }),
         }
       );
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.detail || "Reject failed");
+      if (!res.ok) throw new Error(
+        typeof json?.detail === "string"
+          ? json.detail
+          : json?.detail?.message || "Reject failed"
+      );
 
-      setMessage(`Rejected ${userId} ❌`);
+      setMessage(`Rejected ${userId} ❌ ${json?.reason || reason}`);
       await loadUsers(userId);
     } catch (e: any) {
       setMessage(e?.message || "Reject failed");
@@ -209,9 +223,22 @@ export default function AgentKycPage() {
   }
 
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
+    const filtered = users.filter((u) => {
       if (statusFilter === "all") return true;
       return String(u.kyc_status || "").toLowerCase() === statusFilter;
+    });
+
+    // pending first, then unverified, then rest
+    return filtered.sort((a, b) => {
+      const order: Record<string, number> = {
+        pending: 0,
+        unverified: 1,
+        rejected: 2,
+        verified: 3,
+      };
+      const sa = String(a.kyc_status || "").toLowerCase();
+      const sb = String(b.kyc_status || "").toLowerCase();
+      return (order[sa] ?? 99) - (order[sb] ?? 99);
     });
   }, [users, statusFilter]);
 

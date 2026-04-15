@@ -575,7 +575,6 @@ setDepositLoading(true);
       }
 
       await apiAuth("/withdraw/create", "POST", {
-        user_id: userId,
         amount_usd: amount,
         payout_currency: withdrawCurrency,
         payout_address: withdrawAddress.trim(),

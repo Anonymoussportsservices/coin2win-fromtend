@@ -8,25 +8,48 @@ export default function AgentLoginPage() {
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
     if (!emailOrUsername.trim() || !password.trim()) {
-      setError("Enter your email/username and password.");
+      setError("Enter your email and password.");
       return;
     }
 
-    localStorage.setItem(
-      "agent_session",
-      JSON.stringify({
-        logged_in: true,
-        email_or_username: emailOrUsername.trim(),
-      })
-    );
+    try {
+      setLoading(true);
 
-    router.replace("/agent/dashboard");
+      const res = await fetch("/ui-api/agent/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailOrUsername.trim(),
+          password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.detail || "Invalid credentials");
+        return;
+      }
+
+      localStorage.setItem("agent_session_data", JSON.stringify(data?.agent || {}));
+      localStorage.setItem("agent_viewer_id", data?.agent?.id || "");
+      localStorage.removeItem("agent_session");
+      localStorage.removeItem("admin_key");
+      localStorage.removeItem("coin2win_admin_key");
+
+      router.replace("/agent/dashboard");
+    } catch (err) {
+      setError("Request failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -42,7 +65,7 @@ export default function AgentLoginPage() {
           <input
             value={emailOrUsername}
             onChange={(e) => setEmailOrUsername(e.target.value)}
-            placeholder="Email or Username"
+            placeholder="Email"
             style={input}
           />
 
@@ -54,8 +77,8 @@ export default function AgentLoginPage() {
             style={input}
           />
 
-          <button type="submit" style={btn}>
-            Login
+          <button type="submit" style={btn} disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
       </div>

@@ -10,9 +10,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wit
     const res = await fetch(`${base}/admin/withdrawals/${withdrawal_id}/reject`, {
       method: "POST",
       headers: { "X-Admin-Key": adminKey, "Content-Type": "application/json" },
-      body: body || JSON.stringify({ reason: "Rejected by admin" }),
+      body: body || "{}",
     });
-    const data = await res.json();
+
+    const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch {
     return NextResponse.json({ detail: "Proxy error" }, { status: 500 });
