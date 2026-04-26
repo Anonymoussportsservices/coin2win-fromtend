@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-const navItems = [
+const baseNavItems = [
   { label: "Dashboard", href: "/agent/dashboard", icon: "📊" },
   { label: "Billing", href: "/agent/billing", icon: "💼" },
   { label: "Users", href: "/agent/users", icon: "👥" },
@@ -12,6 +12,8 @@ const navItems = [
   { label: "CRM", href: "/agent/crm", icon: "🎯" },
   { label: "KYC", href: "/agent/kyc", icon: "🪪" },
   { label: "Withdrawals", href: "/agent/withdrawals", icon: "💸" },
+  { label: "Brand CMS", href: "/admin/brands", icon: "🎨" },
+  { label: "Casino Games", href: "/agent/casino/games", icon: "🎰" },
 ];
 
 type BrandData = {
@@ -88,6 +90,21 @@ export default function AgentShell({
   }, [viewerId]);
 
   const brandName = brand?.brand_name || "Coin2Win";
+
+  const session = typeof window !== "undefined"
+    ? JSON.parse(localStorage.getItem("agent_session_data") || "{}")
+    : {};
+
+  const isSuperAdmin =
+    String(session?.id || "").toLowerCase() === "supercoin" ||
+    String(session?.role || "").toLowerCase() === "superadmin";
+
+  const navItems = baseNavItems.filter((item) => {
+    if (item.href === "/admin/brands" || item.href === "/agent/casino/games") {
+      return isSuperAdmin;
+    }
+    return true;
+  });
   if (pathname === "/agent/login") {
     return <>{children}</>;
   }

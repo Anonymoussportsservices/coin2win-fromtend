@@ -10,6 +10,7 @@ export type CasinoGame = {
   name: string
   provider: string
   image: string
+  thumbnail?: string
   href?: string
   live?: boolean
   comingSoon?: boolean
@@ -95,9 +96,30 @@ export const casinoGames: CasinoGame[] = [
     name: "Mines",
     provider: "Coin2Win Originals",
     image: "💣",
-    comingSoon: true,
-    categories: ["originals", "new-releases"],
-    badge: "Soon",
+    href: "/mines",
+    live: true,
+    categories: ["originals", "hot", "new-releases"],
+    badge: "Live",
+  },
+  {
+    id: "hilo",
+    name: "Hi-Lo",
+    provider: "Coin2Win Originals",
+    image: "🃏",
+    href: "/hilo",
+    live: true,
+    categories: ["originals", "hot", "new-releases"],
+    badge: "Live",
+  },
+  {
+    id: "coinflip",
+    name: "Coinflip",
+    provider: "Coin2Win Originals",
+    image: "🪙",
+    href: "/coinflip",
+    live: true,
+    categories: ["originals", "hot", "new-releases"],
+    badge: "Live",
   },
   {
     id: "plinko",
