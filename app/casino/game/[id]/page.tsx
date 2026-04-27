@@ -1,99 +1,136 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import PlayerShell from "@/components/PlayerShell";
 
-type LaunchState = {
-  loading: boolean;
-  error: string;
-  title: string;
-  launchUrl: string;
-  mock: boolean;
-};
-
-export default function SoftSwissGameLaunchPage() {
+export default function GamePage() {
   const params = useParams();
-  const gameId = String(params?.id || "");
-  const [state, setState] = useState<LaunchState>({
-    loading: true,
-    error: "",
-    title: "Casino Game",
-    launchUrl: "",
-    mock: false,
-  });
+  const gameId = params?.id as string;
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [launchUrl, setLaunchUrl] = useState("");
+  const [sessionPayload, setSessionPayload] = useState("");
+
+  async function loadGame() {
+    try {
+      setLoading(true);
+      setError("");
+      setLaunchUrl("");
+
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+
+      const res = await fetch("/ui-api/casino/softswiss/launch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ game_id: gameId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.launch_url) {
+        throw new Error(data?.detail || "Launch failed");
+      }
+
+      setLaunchUrl(data.launch_url);
+      setSessionPayload(data.session_payload || "");
+    } catch (err: any) {
+      setError(err?.message || "Game failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function goFullscreen() {
+    try {
+      if (wrapRef.current && document.fullscreenElement !== wrapRef.current) {
+        await wrapRef.current.requestFullscreen();
+      } else if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {}
+  }
 
   useEffect(() => {
-    let mounted = true;
-
-    async function launch() {
-      try {
-        const res = await fetch("/ui-api/casino/softswiss/launch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            user_id: "player_001",
-            game_id: gameId,
-            mode: "real",
-          }),
-          cache: "no-store",
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.ok || !data?.launch_url) {
-          throw new Error(data?.detail || "Unable to launch game");
-        }
-
-        if (!mounted) return;
-        setState({
-          loading: false,
-          error: "",
-          title: data.title || "Casino Game",
-          launchUrl: data.launch_url,
-          mock: Boolean(data.mock),
-        });
-      } catch (e: any) {
-        if (!mounted) return;
-        setState({
-          loading: false,
-          error: e?.message || "Launch failed",
-          title: "Casino Game",
-          launchUrl: "",
-          mock: false,
-        });
-      }
-    }
-
-    if (gameId) launch();
-
-    return () => {
-      mounted = false;
-    };
+    if (gameId) loadGame();
   }, [gameId]);
 
   return (
-    <PlayerShell title={state.title} subtitle={state.mock ? "Mock launcher session" : "Live casino session"} fullWidth>
-      <div className="grid gap-3 text-white">
-        {state.loading ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 text-slate-300">
-            Launching game...
+    <div className="min-h-screen bg-[#0f212e] text-white">
+      <div className="sticky top-0 z-30 border-b border-white/10 bg-[#0f212e]/95 px-3 py-3 backdrop-blur sm:px-5">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-black sm:text-base">{gameId}</div>
+            <div className="mt-0.5 truncate text-[11px] font-bold text-slate-400">
+              {sessionPayload ? `Session ${sessionPayload.slice(0, 8)}...` : "Casino launcher"}
+            </div>
           </div>
-        ) : state.error ? (
-          <div className="rounded-3xl border border-red-500/20 bg-red-500/10 p-6 text-red-200">
-            {state.error}
+
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={loadGame}
+              className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs font-black text-slate-200 hover:bg-black/40"
+            >
+              Reload
+            </button>
+
+            <button
+              onClick={goFullscreen}
+              className="hidden rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs font-black text-slate-200 hover:bg-black/40 sm:inline-flex"
+            >
+              Fullscreen
+            </button>
+
+            <Link
+              href="/casino"
+              className="rounded-xl bg-emerald-400 px-3 py-2 text-xs font-black text-[#071824] hover:bg-emerald-300"
+            >
+              Exit
+            </Link>
           </div>
-        ) : (
-          <section className="overflow-hidden rounded-3xl border border-white/10 bg-black shadow-[0_18px_44px_rgba(0,0,0,0.35)]">
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-[1600px] p-2 sm:p-4">
+        <div
+          ref={wrapRef}
+          className="relative flex h-[calc(100vh-82px)] min-h-[520px] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_22px_60px_rgba(0,0,0,0.35)] sm:h-[calc(100vh-96px)] sm:rounded-3xl"
+        >
+          {loading && (
+            <div className="flex flex-col items-center gap-4">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-emerald-400" />
+              <div className="text-sm font-bold text-slate-300">Loading game...</div>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="flex max-w-sm flex-col items-center gap-4 p-6 text-center">
+              <div className="text-2xl font-black">Game unavailable</div>
+              <div className="text-sm leading-6 text-slate-400">{error}</div>
+              <button
+                onClick={loadGame}
+                className="rounded-xl bg-emerald-400 px-5 py-3 text-sm font-black text-[#071824] hover:bg-emerald-300"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && launchUrl && (
             <iframe
-              src={state.launchUrl}
-              title={state.title}
-              className="h-[72vh] w-full border-0"
-              allow="autoplay; fullscreen; clipboard-read; clipboard-write"
+              src={launchUrl}
+              className="h-full w-full border-0 bg-black"
+              allow="fullscreen; autoplay"
               allowFullScreen
             />
-          </section>
-        )}
-      </div>
-    </PlayerShell>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
