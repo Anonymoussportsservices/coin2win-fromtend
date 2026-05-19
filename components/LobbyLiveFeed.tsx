@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type LiveFeedItem = {
   id?: string;
@@ -34,14 +34,13 @@ function normalizePlayer(item: LiveFeedItem) {
 
 export default function LobbyLiveFeed() {
   const [items, setItems] = useState<LiveFeedItem[]>([]);
-  const [index, setIndex] = useState(0);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadFeed() {
       try {
-        const res = await fetch("/api/studio/live-wins?limit=24", {
+        const res = await fetch("/ui-api/studio/live-wins?limit=50", {
           cache: "no-store",
           headers: { Accept: "application/json" },
         });
@@ -72,34 +71,18 @@ export default function LobbyLiveFeed() {
     };
   }, []);
 
-  useEffect(() => {
-    if (items.length <= 1) return;
+  const visible = items.slice(0, 12);
 
-    const rotateTimer = setInterval(() => {
-      setIndex((prev) => (prev + 1) % items.length);
-    }, 2800);
-
-    return () => clearInterval(rotateTimer);
-  }, [items]);
-
-  const visible = useMemo(() => {
-    if (!items.length) return [];
-    const ordered = [...items.slice(index), ...items.slice(0, index)];
-    return ordered.slice(0, 8);
-  }, [items, index]);
 
   return (
-    <section className="block w-full min-w-0 max-w-none overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 p-3 shadow-sm sm:rounded-3xl sm:p-5">
+    <section className="block w-full min-w-0 max-w-none rounded-2xl border border-slate-800 bg-slate-900/60 p-3 shadow-sm sm:rounded-3xl sm:p-4">
       <div className="mb-3 min-w-0">
         <div className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-emerald-400">
           Live Bets Feed
         </div>
         <h2 className="mt-1 text-lg font-bold text-white sm:text-xl">
-          Recent real player action
+          
         </h2>
-        <p className="mt-1 text-xs text-slate-400 sm:text-sm">
-          Real wins and cashouts only.
-        </p>
       </div>
 
       {visible.length === 0 ? (
@@ -107,7 +90,8 @@ export default function LobbyLiveFeed() {
           No real live bets yet.
         </div>
       ) : (
-        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
+        <div className="group overflow-hidden">
+          <div className="flex w-max animate-[liveTicker_28s_linear_infinite] gap-2 overflow-x-auto pb-1 group-hover:[animation-play-state:paused] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex md:w-max md:overflow-x-auto">
           {visible.map((item, i) => {
             const gameLabel = normalizeGameLabel(item);
             const player = normalizePlayer(item);
@@ -115,26 +99,47 @@ export default function LobbyLiveFeed() {
 
             return (
               <div
-                key={item.id ?? `${player}-${gameLabel}-${payout}-${i}`}
-                className="flex min-h-[52px] sm:min-h-[72px] items-center justify-center rounded-xl border border-white/5 bg-[linear-gradient(180deg,#1a2c38_0%,#13202a_100%)] px-2.5 py-1.5 sm:px-3 sm:py-2 text-center shadow-[0_8px_18px_rgba(0,0,0,0.16)]"
+                key={`${item.id}-${i}`}
+                className="flex min-w-[260px] md:min-w-[320px] items-center justify-between gap-3 rounded-2xl border border-white/5 bg-[#1a2c38] p-3 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition hover:border-emerald-400/25 hover:bg-[#213743]"
               >
-                <div className="flex flex-wrap items-center justify-center gap-1 text-[11px] font-semibold leading-tight text-white sm:gap-1.5 sm:text-[13px]">
-                  <span className="font-bold text-white break-all">{player}</span>
-                  <span className="text-slate-300">won</span>
-                  <span className="font-black text-emerald-300">{fmtMoney(payout)}</span>
-                  <span className="text-slate-400">on</span>
-                  <span className="font-semibold text-sky-300">{gameLabel}</span>
-                  {item.multiplier != null ? (
-                    <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1 py-[2px] text-[8px] font-extrabold text-emerald-300 sm:px-1.5 sm:text-[10px]">
-                      {Number(item.multiplier).toFixed(2)}x
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-black text-white">{player}</span>
+                    <span className="rounded-full bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300">
+                      Win
                     </span>
-                  ) : null}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                    <span>on</span>
+                    <span className="font-bold text-sky-300">{gameLabel}</span>
+                    {item.multiplier != null ? (
+                      <span className="rounded-full bg-slate-950 px-1.5 py-0.5 text-[10px] font-black text-emerald-300">
+                        {Number(item.multiplier).toFixed(2)}x
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-black text-emerald-300 sm:text-base">{fmtMoney(payout)}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Payout</div>
                 </div>
               </div>
             );
           })}
+          </div>
         </div>
       )}
+    <style jsx>{`
+        @keyframes liveTicker {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-45%);
+          }
+        }
+      `}</style>
     </section>
   );
 }

@@ -29,18 +29,14 @@ export default function CasinoCategoryRow({
   return (
     <section
       id={category.id}
-      className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 p-3 shadow-sm sm:rounded-3xl sm:p-5"
+      className="w-full max-w-full overflow-hidden"
     >
-      <div className="mb-3 flex flex-col gap-3 sm:mb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
         <div className="min-w-0 flex-1">
-          <h2 className="break-words text-lg font-bold text-white sm:text-xl">
+          <h2 className="break-words text-xl font-black text-white sm:text-xl">
             {category.label}
           </h2>
-          {category.description ? (
-            <p className="mt-1 break-words text-xs text-slate-400 sm:text-sm">
-              {category.description}
-            </p>
-          ) : null}
+
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
@@ -75,7 +71,7 @@ export default function CasinoCategoryRow({
 
       <div
         ref={railRef}
-        className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4"
+        className="flex gap-3 overflow-x-auto pb-3 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-4"
       >
         {games.map((game) => (
           <CasinoGameCard key={game.id} game={game} />

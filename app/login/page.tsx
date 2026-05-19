@@ -45,25 +45,37 @@ export default function LoginPage() {
         body: JSON.stringify({
           email,
           password,
-          registered_host: typeof window !== "undefined" ? window.location.host : "",
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          typeof data?.detail === "string"
-            ? data.detail
-            : "Login failed"
-        );
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { raw };
       }
 
-      setStoredSession(data?.token, data?.user);
-      window.dispatchEvent(new Event("coin2win-auth-changed"));
-      router.push("/casino");
+      if (!res.ok) {
+        throw new Error(`status=${res.status} detail=${typeof data?.detail === "string" ? data.detail : typeof data?.raw === "string" ? data.raw : raw || "Login failed"}`);
+      }
+
+      const u = data?.user || {};
+      const normalized = {
+        user_id: u.user_id || u.id || u.username || "",
+        email: u.email || "",
+        username: u.username || u.user_id || "",
+      };
+
+      if (!data?.token || !normalized.user_id) {
+        throw new Error(`bad-session token=${!!data?.token} user_id=${normalized.user_id || "missing"} raw=${raw}`);
+      }
+
+      setStoredSession(data.token, normalized);
+      window.location.href = "/casino";
     } catch (err: any) {
-      setError(err?.message || "Login failed");
+      console.error("PLAYER_LOGIN_ERROR", err);
+      setError(String(err?.message || err || "Login failed"));
     } finally {
       setLoading(false);
     }

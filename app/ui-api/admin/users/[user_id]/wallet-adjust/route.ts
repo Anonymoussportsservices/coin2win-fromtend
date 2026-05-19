@@ -6,24 +6,29 @@ export async function POST(
 ) {
   const { user_id } = await params;
   const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-  const adminKey = process.env.ADMIN_KEY || "";
+  const adminKey = process.env.ADMIN_KEY || process.env.NEXT_PUBLIC_ADMIN_KEY || "";
 
   try {
-    const body = await req.text();
+    const body = await req.json();
 
     const res = await fetch(`${base}/admin/users/${encodeURIComponent(user_id)}/wallet-adjust`, {
       method: "POST",
       headers: {
-        "X-Admin-Key": adminKey,
         "Content-Type": "application/json",
+        "X-Admin-Key": adminKey,
+        Accept: "application/json",
       },
-      body,
+      body: JSON.stringify(body),
       cache: "no-store",
     });
 
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ detail: "Proxy error" }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ detail: e?.message || "Wallet adjust proxy error" }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({});
 }

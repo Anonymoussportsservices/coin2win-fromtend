@@ -211,6 +211,54 @@ export default function AgentBillingPage() {
     }
   }
 
+  function updateBillingEdge(edgeId: number, patch: Partial<BillingEdge>) {
+    setData((prev) => {
+      if (!prev) return prev;
+
+      const patchList = (list?: BillingEdge[]) =>
+        (list || []).map((edge) => edge.id === edgeId ? { ...edge, ...patch } : edge);
+
+      return {
+        ...prev,
+        edges: patchList(prev.edges),
+        active_relationships: patchList(prev.active_relationships),
+        inactive_relationships: patchList(prev.inactive_relationships),
+      };
+    });
+  }
+
+  async function saveBillingEdge(edge: BillingEdge) {
+    try {
+      setBusyId(edge.child_id);
+      setMessage("");
+
+      const res = await fetch(`/ui-api/admin/billing/edge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent_id: edge.parent_id,
+          child_id: edge.child_id,
+          billing_type: edge.billing_type || "hybrid",
+          pph_rate: Number(edge.pph_rate || 0),
+          ggr_share: Number(edge.ggr_share || 0),
+          sportsbook_enabled: !!edge.sportsbook_enabled,
+          casino_enabled: !!edge.casino_enabled,
+          crash_enabled: !!edge.crash_enabled,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.detail || "Failed to save billing link");
+
+      setMessage(`Billing updated for ${edge.child_id} ✅`);
+      await load(periodKey, days);
+    } catch (e: any) {
+      setMessage(e?.message || "Failed to save billing link");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   async function enableBilling(row: UserRow) {
     try {
       if (!row.parent_id) throw new Error("Missing parent_id for billing relationship");
@@ -239,45 +287,6 @@ export default function AgentBillingPage() {
       await load(periodKey, days);
     } catch (e: any) {
       setMessage(e?.message || "Failed to enable billing");
-    } finally {
-      setBusyId("");
-    }
-  }
-
-  async function editBilling(edge: BillingEdge) {
-    try {
-      const pphRaw = window.prompt(`PPH Rate for ${edge.child_id}`, String(edge.pph_rate ?? 0));
-      if (pphRaw === null) return;
-      const ggrRaw = window.prompt(`GGR Share for ${edge.child_id} (example 0.25 = 25%)`, String(edge.ggr_share ?? 0));
-      if (ggrRaw === null) return;
-
-      const pph = Number(pphRaw);
-      const ggr = Number(ggrRaw);
-
-      if (!Number.isFinite(pph) || pph < 0) throw new Error("Invalid PPH rate");
-      if (!Number.isFinite(ggr) || ggr < 0 || ggr > 1) throw new Error("GGR share must be between 0 and 1");
-
-      setBusyId(edge.child_id);
-      setMessage("");
-
-      const res = await fetch(`/ui-api/admin/billing/edge-update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          parent_id: edge.parent_id,
-          child_id: edge.child_id,
-          pph_rate: pph,
-          ggr_share: ggr,
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.ok === false) throw new Error(json?.detail || json?.error || "Failed to update billing");
-
-      setMessage(`Billing updated for ${edge.child_id} ✅`);
-      await load(periodKey, days);
-    } catch (e: any) {
-      setMessage(e?.message || "Failed to update billing");
     } finally {
       setBusyId("");
     }
@@ -319,13 +328,13 @@ export default function AgentBillingPage() {
             <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">Financial</div>
             <h1 className="mt-2 text-3xl font-black">Billing Dashboard</h1>
             <p className="mt-2 text-sm text-slate-300">
-              Hierarchy, billing status, monthly runs, and financial relationships.
+              Review billing charges, active players, and agent relationships.
             </p>
           </div>
 
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <div className="mb-1 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Period</div>
+              <div className="mb-1 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Billing Period</div>
               <input
                 value={periodKey}
                 onChange={(e) => setPeriodKey(e.target.value)}
@@ -335,7 +344,7 @@ export default function AgentBillingPage() {
             </div>
 
             <div>
-              <div className="mb-1 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Active Window</div>
+              <div className="mb-1 text-xs font-black uppercase tracking-[0.16em] text-slate-400">Active Player Window</div>
               <input
                 type="number"
                 min={1}
@@ -369,11 +378,11 @@ export default function AgentBillingPage() {
       ) : !data ? null : (
         <>
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-            <Card title="Relationships" value={String(Number(data.summary.edge_count || 0))} sub={`${Number(data.summary.run_count || 0)} runs`} />
-            <Card title="Player Count" value={String(Number(data.summary.player_count || 0))} sub="From billing runs" />
-            <Card title="Active Players" value={String(Number(data.summary.active_players || 0))} sub={`${Number(data.summary.activity_window_days || 0)}-day live window`} />
+            <Card title="Billing Charge" value={money(data.summary.total_amount)} sub={data.summary.has_any_run ? "Current period" : "No charge yet"} />
+            <Card title="Player Count" value={String(Number(data.summary.player_count || 0))} sub="Players included in billing run" />
+            <Card title="Active Players" value={String(Number(data.summary.active_players || 0))} sub={`Played in last ${Number(data.summary.activity_window_days || 0)} days`} />
             <Card title="PPH Amount" value={money(data.summary.pph_amount)} />
-            <Card title="Total Amount" value={money(data.summary.total_amount)} sub={data.summary.has_any_run ? "Billing run exists" : "No runs yet"} />
+            <Card title="Relationships" value={String(Number(data.summary.edge_count || 0))} sub={`${Number(data.summary.run_count || 0)} billing runs`} />
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -396,7 +405,7 @@ export default function AgentBillingPage() {
                 {tree.map((row) => {
                   const rel = relationshipMap.get(`${row.parent_id || ""}__${row.id}`);
                   const isViewer = row.id === viewerId;
-                  const canEnable = !isViewer && !rel;
+                  const canEnable = !isViewer && (!rel || rel.is_active === false);
                   const indent = row.depth * 18;
 
                   return (
@@ -418,8 +427,8 @@ export default function AgentBillingPage() {
                               </span>
                             ) : rel ? (
                               <>
-                                <span className="rounded-full bg-emerald-500/20 px-3 py-1 font-black text-emerald-300">
-                                  Billing configured
+                                <span className={`rounded-full px-3 py-1 font-black ${rel.is_active === false ? "bg-amber-500/20 text-amber-300" : "bg-emerald-500/20 text-emerald-300"}`}>
+                                  {rel.is_active === false ? "Billing inactive" : "Billing configured"}
                                 </span>
                                 <span className={`rounded-full px-3 py-1 font-black ${rel.has_run ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
                                   {rel.has_run ? "Run exists" : "No run this period"}
@@ -452,7 +461,7 @@ export default function AgentBillingPage() {
                               disabled={busyId === row.id}
                               className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:bg-emerald-500 disabled:opacity-60"
                             >
-                              {busyId === row.id ? "Enabling..." : "Enable Billing"}
+                              {busyId === row.id ? "Saving..." : rel?.is_active === false ? "Reactivate Billing" : "Enable Billing"}
                             </button>
                           ) : null}
                         </div>
@@ -464,140 +473,101 @@ export default function AgentBillingPage() {
             </div>
 
             <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
-              <h2 className="text-xl font-black">Billing Relationships</h2>
+              <h2 className="text-xl font-black">Agent Billing</h2>
               <div className="mt-4 grid gap-4">
-                {data.edges?.length ? (
-                  data.edges.map((edge) => (
+                {activeRelationships.length ? (
+                  activeRelationships.map((edge) => (
                     <div key={edge.id} className="rounded-2xl border border-white/5 bg-[#13232d] p-4">
-                      <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                        Relationship
-                      </div>
-                      <div className="mt-1 text-lg font-black text-white">
-                        {edge.parent_id} bills {edge.child_id}
+                      <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Billing Link</div>
+                      <div className="mt-1 text-lg font-black text-white">{edge.parent_id} bills {edge.child_id}</div>
+
+                      <div className="mt-4 rounded-2xl border border-white/5 bg-[#10202a] p-4">
+                        <div className="mb-3 text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Billing Settings</div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <div>
+                            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Billing Type</div>
+                            <select
+                              value={edge.billing_type || "hybrid"}
+                              onChange={(e) => {
+                                const nextType = e.target.value;
+                                updateBillingEdge(edge.id, {
+                                  billing_type: nextType,
+                                  ...(nextType === "pph" ? { ggr_share: 0 } : {}),
+                                  ...(nextType === "ggr" ? { pph_rate: 0 } : {}),
+                                });
+                              }}
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none"
+                            >
+                              <option value="hybrid">Hybrid: PPH + GGR</option>
+                              <option value="ggr">GGR Only</option>
+                              <option value="pph">PPH Only</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">PPH Rate</div>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              disabled={edge.billing_type === "ggr"}
+                              value={edge.pph_rate ?? 0}
+                              onChange={(e) => updateBillingEdge(edge.id, { pph_rate: Number(e.target.value || 0) })}
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                            <div className="mt-1 text-[11px] text-slate-500">Example: 10 = $10/player</div>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">GGR Share</div>
+                            <input
+                              type="number"
+                              min="0"
+                              max="1"
+                              step="0.01"
+                              disabled={edge.billing_type === "pph"}
+                              value={edge.ggr_share ?? 0}
+                              onChange={(e) => updateBillingEdge(edge.id, { ggr_share: Number(e.target.value || 0) })}
+                              className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                            <div className="mt-1 text-[11px] text-slate-500">Example: 0.20 = 20%</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 rounded-xl bg-[#0f172a] px-3 py-2 text-xs text-slate-400">
+                          Suggested plans: Hybrid = $10 PPH + 0.20 GGR · GGR Only = 0.30
+                        </div>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl bg-[#10202a] p-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Mode</div>
-                          <div className="mt-1 font-black text-white">{edge.billing_type}</div>
-                        </div>
-                        <div className="rounded-2xl bg-[#10202a] p-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Cycle</div>
-                          <div className="mt-1 font-black text-white">{edge.billing_cycle}</div>
-                        </div>
-                        <div className="rounded-2xl bg-[#10202a] p-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">PPH Rate</div>
-                          <div className="mt-1 font-black text-white">{money(edge.pph_rate)}</div>
-                        </div>
-                        <div className="rounded-2xl bg-[#10202a] p-3">
-                          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">GGR Share</div>
-                          <div className="mt-1 font-black text-white">{fmtPct(edge.ggr_share)}</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <span className={`rounded-full px-3 py-1 font-black ${edge.sportsbook_enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-300"}`}>Sportsbook</span>
-                        <span className={`rounded-full px-3 py-1 font-black ${edge.casino_enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-300"}`}>Casino</span>
-                        <span className={`rounded-full px-3 py-1 font-black ${edge.crash_enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-slate-300"}`}>Originals</span>
-                      </div>
+                      <button
+                        onClick={() => saveBillingEdge(edge)}
+                        disabled={busyId === edge.child_id}
+                        className="mt-3 w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-black text-[#071824] disabled:opacity-60"
+                      >
+                        {busyId === edge.child_id ? "Saving..." : "Save Billing Settings"}
+                      </button>
 
                       {edge.run ? (
-                        <div className="mt-4 rounded-2xl border border-white/5 bg-[#10202a] p-4">
-                          <div className="text-sm font-black text-white">Latest run for {edge.run.period_key}</div>
-                          <div className="mt-3 grid grid-cols-2 gap-3">
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Player Count</div>
-                              <div className="mt-1 font-black text-white">{edge.run.player_count}</div>
-                            </div>
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Total</div>
-                              <div className="mt-1 font-black text-white">{money(edge.run.total_amount)}</div>
-                            </div>
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">PPH</div>
-                              <div className="mt-1 font-black text-white">{money(edge.run.pph_amount)}</div>
-                            </div>
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">GGR</div>
-                              <div className="mt-1 font-black text-white">{money(edge.run.ggr_amount)}</div>
-                            </div>
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Originals GGR</div>
-                              <div className="mt-1 font-black text-white">{money(edge.run.originals_ggr)}</div>
-                            </div>
-                            <div>
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Created</div>
-                              <div className="mt-1 font-black text-white">{fmtDate(edge.run.created_at)}</div>
-                            </div>
+                        <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+                          <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">Billing Charge ({edge.run.period_key})</div>
+                          <div className="mt-2 text-2xl font-black text-white">{money(edge.run.total_amount)}</div>
+                          <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-300">
+                            <span>Players: {edge.run.player_count}</span>
+                            <span>PPH: {money(edge.run.pph_amount)}</span>
+                            <span>GGR: {money(edge.run.ggr_amount)}</span>
                           </div>
                         </div>
                       ) : (
                         <div className="mt-4 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                          No billing run exists yet for this period.
+                          No charge generated for this period yet.
                         </div>
                       )}
                     </div>
                   ))
                 ) : (
                   <div className="rounded-2xl border border-white/5 bg-[#13232d] p-4 text-sm text-slate-400">
-                    No billing relationships configured yet.
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-8">
-                <div className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-400">History</div>
-                {inactiveRelationships.length ? (
-                  <div className="grid gap-4">
-                    {inactiveRelationships.map((edge) => (
-                      <div key={edge.id} className="rounded-3xl border border-white/5 bg-[#10202a] p-5 opacity-90">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                          <div>
-                            <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Historical Relationship</div>
-                            <div className="mt-1 text-lg font-black text-white">
-                              {edge.parent_id} billed {edge.child_id}
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                              <span className="rounded-full bg-white/10 px-3 py-1 font-black text-slate-300">
-                                Inactive
-                              </span>
-                              <span className="rounded-full bg-white/10 px-3 py-1 font-black text-slate-300">
-                                {edge.billing_type}
-                              </span>
-                              <span className="rounded-full bg-white/10 px-3 py-1 font-black text-slate-300">
-                                {edge.billing_cycle}
-                              </span>
-                              <span className={`rounded-full px-3 py-1 font-black ${edge.has_run ? "bg-sky-500/20 text-sky-300" : "bg-slate-500/20 text-slate-300"}`}>
-                                {edge.has_run ? "Historical run exists" : "No run recorded"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                            <div className="rounded-2xl border border-white/5 bg-[#0f172a] p-3">
-                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">PPH</div>
-                              <div className="mt-2 text-lg font-black text-white">{money(edge.pph_rate)}</div>
-                            </div>
-                            <div className="rounded-2xl border border-white/5 bg-[#0f172a] p-3">
-                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">GGR %</div>
-                              <div className="mt-2 text-lg font-black text-white">{fmtPct(edge.ggr_share)}</div>
-                            </div>
-                            <div className="rounded-2xl border border-white/5 bg-[#0f172a] p-3">
-                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Updated</div>
-                              <div className="mt-2 text-sm font-black text-white">{fmtDate(edge.updated_at)}</div>
-                            </div>
-                            <div className="rounded-2xl border border-white/5 bg-[#0f172a] p-3">
-                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Created</div>
-                              <div className="mt-2 text-sm font-black text-white">{fmtDate(edge.created_at)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-white/5 bg-[#13232d] p-4 text-sm text-slate-400">
-                    No historical billing relationships found.
+                    No active billing links configured yet.
                   </div>
                 )}
               </div>

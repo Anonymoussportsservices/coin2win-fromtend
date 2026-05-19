@@ -3,15 +3,6 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import PasswordResetCard from "./components/PasswordResetCard";
-import WalletAdjustCard from "./components/WalletAdjustCard";
-import ContactNotesCard from "./components/ContactNotesCard";
-import RecentDepositsCard from "./components/RecentDepositsCard";
-import RecentWithdrawalsCard from "./components/RecentWithdrawalsCard";
-import RecentTransactionsCard from "./components/RecentTransactionsCard";
-import KYCVerificationCard from "./components/KYCVerificationCard";
-import KYCHistoryCard from "./components/KYCHistoryCard";
-import AuditTrailCard from "./components/AuditTrailCard";
 
 type ProfileResponse = {
   ok: boolean;
@@ -561,29 +552,77 @@ export default function AgentUserProfilePage() {
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
+          <div className="mb-5 rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-xl font-black">Wallet Adjust</h2>
+                <p className="mt-1 text-sm text-slate-400">Credit or debit player balance directly from profile.</p>
+              </div>
 
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Amount</label>
+                  <input
+                    value={walletAdjustAmount}
+                    onChange={(e) => setWalletAdjustAmount(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                    placeholder="10"
+                  />
+                </div>
 
-            <PasswordResetCard
-              resetPassword={resetPassword}
-              setResetPassword={setResetPassword}
-              resetPasswordConfirm={resetPasswordConfirm}
-              setResetPasswordConfirm={setResetPasswordConfirm}
-              resetPasswordLoading={resetPasswordLoading}
-              onSubmit={resetUserPassword}
-            />
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Reason</label>
+                  <select
+                    value={walletAdjustReasonPreset}
+                    onChange={(e) => setWalletAdjustReasonPreset(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                  >
+                    <option value="bonus_manual">bonus_manual</option>
+                    <option value="agent_credit">agent_credit</option>
+                    <option value="settlement_adjustment">settlement_adjustment</option>
+                    <option value="vip_comp">vip_comp</option>
+                    <option value="fraud_reversal">fraud_reversal</option>
+                    <option value="deposit_correction">deposit_correction</option>
+                    <option value="withdrawal_correction">withdrawal_correction</option>
+                    <option value="promo_credit">promo_credit</option>
+                    <option value="loss_rebate">loss_rebate</option>
+                    <option value="balance_fix">balance_fix</option>
+                    <option value="test_credit">test_credit</option>
+                    <option value="test_debit">test_debit</option>
+                    <option value="custom">custom</option>
+                  </select>
 
-          <WalletAdjustCard
-            walletAdjustAmount={walletAdjustAmount}
-            setWalletAdjustAmount={setWalletAdjustAmount}
-            walletAdjustReasonPreset={walletAdjustReasonPreset}
-            setWalletAdjustReasonPreset={setWalletAdjustReasonPreset}
-            walletAdjustReasonCustom={walletAdjustReasonCustom}
-            setWalletAdjustReasonCustom={setWalletAdjustReasonCustom}
-            walletAdjustLoading={walletAdjustLoading}
-            onCredit={() => runWalletAdjust("credit")}
-            onDebit={() => runWalletAdjust("debit")}
-          />
+                  {walletAdjustReasonPreset === "custom" ? (
+                    <input
+                      value={walletAdjustReasonCustom}
+                      onChange={(e) => setWalletAdjustReasonCustom(e.target.value)}
+                      className="mt-3 w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                      placeholder="manual_profile_adjustment"
+                    />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => runWalletAdjust("credit")}
+                  disabled={walletAdjustLoading}
+                  className="rounded-2xl bg-emerald-500 px-4 py-3 font-black text-white disabled:opacity-60"
+                >
+                  {walletAdjustLoading ? "Processing..." : "Credit Balance"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => runWalletAdjust("debit")}
+                  disabled={walletAdjustLoading}
+                  className="rounded-2xl bg-red-500 px-4 py-3 font-black text-white disabled:opacity-60"
+                >
+                  {walletAdjustLoading ? "Processing..." : "Debit Balance"}
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="mb-5 grid grid-cols-2 gap-4 xl:grid-cols-5">
@@ -614,18 +653,89 @@ export default function AgentUserProfilePage() {
             </div>
           </div>
 
-          <ContactNotesCard
-            fullNameInput={fullNameInput}
-            setFullNameInput={setFullNameInput}
-            telegramInput={telegramInput}
-            setTelegramInput={setTelegramInput}
-            phoneInput={phoneInput}
-            setPhoneInput={setPhoneInput}
-            notesInput={notesInput}
-            setNotesInput={setNotesInput}
-            savingContact={savingContact}
-            onSave={saveContactProfile}
-          />
+          <div className="mb-5 rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+            <div className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-xl font-black">Contact & Notes</h2>
+                <p className="mt-1 text-sm text-slate-400">Edit operator-facing player metadata.</p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Full Name</label>
+                  <input
+                    value={fullNameInput}
+                    onChange={(e) => setFullNameInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                    placeholder="Full name"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Telegram</label>
+                  <input
+                    value={telegramInput}
+                    onChange={(e) => setTelegramInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                    placeholder="@username"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Phone</label>
+                  <input
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    className="w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                    placeholder="+1..."
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.16em] text-slate-400">Notes</label>
+                  <textarea
+                    value={notesInput}
+                    onChange={(e) => setNotesInput(e.target.value)}
+                    className="min-h-[110px] w-full rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-white outline-none"
+                    placeholder="VIP, slow payer, risk notes, preferences..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={saveContactProfile}
+                  disabled={savingContact}
+                  className="rounded-2xl bg-sky-500 px-4 py-3 font-black text-white disabled:opacity-60"
+                >
+                  {savingContact ? "Saving..." : "Save Contact Profile"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-5 rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+            <h2 className="text-xl font-black">KYC & Withdraw Settings</h2>
+            <div className="mt-3 grid gap-2 text-sm text-slate-300">
+              
+              <div>KYC Status: <span className="font-black text-white">{profileUser?.kyc_status || "-"}</span></div>
+              <div>
+                KYC Level:{" "}
+                <span className="inline-flex rounded-full bg-emerald-500/20 px-3 py-1 font-black text-emerald-300">
+                  {String(profileUser?.kyc_level ?? 0)}
+                </span>
+              </div>
+              <div>Auto Withdraw: <span className="font-black text-white">{profileUser?.auto_withdraw_enabled ? "ON" : "OFF"}</span></div>
+              <div>Threshold: <span className="font-black text-white">${Number(profileUser?.auto_withdraw_limit ?? 0)}</span></div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button disabled={savingKyc} onClick={() => approveKyc(1)} className="rounded-2xl bg-sky-500 px-4 py-2 font-black text-white">Approve L1</button>
+              <button disabled={savingKyc} onClick={() => approveKyc(2)} className="rounded-2xl bg-sky-500 px-4 py-2 font-black text-white">Approve L2</button>
+              <button disabled={savingKyc} onClick={() => rejectKyc()} className="rounded-2xl bg-sky-500 px-4 py-2 font-black text-white">Reject</button>
+              <button disabled={savingKyc} onClick={() => setManualKyc()} className="rounded-2xl bg-sky-500 px-4 py-2 font-black text-white">Set Manual</button>
+            </div>
+          </div>
 
           <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
@@ -648,53 +758,160 @@ export default function AgentUserProfilePage() {
             </div>
           </div>
 
-          <KYCVerificationCard
-            profileUser={profileUser}
-            kycDetail={kycDetail}
-            savingKyc={savingKyc}
-            approveKyc={approveKyc}
-            rejectKyc={rejectKyc}
-            setManualKyc={setManualKyc}
-            fmtDate={fmtDate}
-          />
 
-          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-            <KYCHistoryCard
-              history={kycDetail?.history || []}
-              fmtDate={fmtDate}
-            />
+          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">KYC Detail</h2>
+              <div className="mt-3 grid gap-2 text-sm text-slate-300">
+                <div>KYC Status: <span className="font-black text-white">{kycDetail?.kyc_status || "-"}</span></div>
+                <div>KYC Level: <span className="inline-flex rounded-full bg-emerald-500/20 px-3 py-1 font-black text-emerald-300">{String(kycDetail?.kyc_level ?? 0)}</span></div>
+                <div>Auto Withdraw: <span className="font-black text-white">{kycDetail?.auto_withdraw_enabled ? "ON" : "OFF"}</span></div>
+                <div>Threshold: <span className="font-black text-white">${Number(kycDetail?.auto_withdraw_limit || 0)}</span></div>
+                <div>Approved At: <span className="font-black text-white">{fmtDate(kycDetail?.kyc_verified_at)}</span></div>
+                <div>Approved By: <span className="font-black text-white">{kycDetail?.kyc_approved_by || "-"}</span></div>
+                <div>Rejected Reason: <span className="font-black text-white">{kycDetail?.kyc_rejected_reason || "-"}</span></div>
+              </div>
 
-            <AuditTrailCard
-              user={user}
-              profileUser={profileUser}
-              fmtDate={fmtDate}
-            />
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                {kycDetail?.files?.id_document ? <a href={kycDetail.files.id_document} target="_blank" className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm font-black text-sky-300">View ID</a> : <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm text-slate-400">No ID</div>}
+                {kycDetail?.files?.selfie ? <a href={kycDetail.files.selfie} target="_blank" className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm font-black text-sky-300">View Selfie</a> : <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm text-slate-400">No Selfie</div>}
+                {kycDetail?.files?.proof_of_address ? <a href={kycDetail.files.proof_of_address} target="_blank" className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm font-black text-sky-300">View POA</a> : <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-center text-sm text-slate-400">No POA</div>}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">KYC History</h2>
+              <div className="mt-3 grid gap-3">
+                {(kycDetail?.history || []).length ? (kycDetail.history || []).map((row: any) => (
+                  <div key={row.id} className="rounded-2xl border border-white/5 bg-[#13232d] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-black text-white">{row.action}</div>
+                      <div className="text-xs text-slate-400">{fmtDate(row.created_at)}</div>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-300">
+                      Actor: {row.actor || "-"} · From: {row.from_level ?? "-"} · To: {row.to_level ?? "-"}
+                    </div>
+                    <div className="mt-2 text-sm text-slate-300">{row.note || "-"}</div>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-white/5 bg-[#13232d] p-4 text-sm text-slate-400">No KYC history yet.</div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-            <RecentDepositsCard
-              deposits={profile.recent_deposits}
-              money={money}
-              fmtDate={fmtDate}
-              shortText={shortText}
-              depositStatusChip={depositStatusChip}
-            />
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">KYC & Audit</h2>
+              <div className="mt-3 grid gap-2 text-sm text-slate-300">
+                <div>KYC Status: <span className="text-white">{profileUser?.kyc_status || "-"}</span></div>
+                <div>KYC Verified At: <span className="text-white">{fmtDate(profileUser?.kyc_verified_at)}</span></div>
+                <div>KYC Rejected Reason: <span className="text-white">{profileUser?.kyc_rejected_reason || "-"}</span></div>
+                <div>Notes: <span className="text-white">{user.notes || "-"}</span></div>
+                <div className="mt-2 text-xs text-slate-400">
+                  Parent change: {fmtDate(user.last_parent_change_at)} by {user.last_parent_change_by || "-"}<br />
+                  Agent code change: {fmtDate(user.last_agent_code_change_at)} by {user.last_agent_code_change_by || "-"}<br />
+                  Created by change: {fmtDate(user.last_created_by_change_at)} by {user.last_created_by_change_by || "-"}<br />
+                  Last updated: {fmtDate(user.updated_at)} by {user.updated_by || "-"}
+                </div>
+              </div>
+            </div>
 
-            <RecentWithdrawalsCard
-              withdrawals={profile.recent_withdrawals}
-              money={money}
-              fmtDate={fmtDate}
-              shortText={shortText}
-              withdrawalStatusChip={withdrawalStatusChip}
-            />
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">Recent Deposits</h2>
+              <div className="mt-3 grid gap-2">
+                {profile.recent_deposits?.length ? profile.recent_deposits.map((d) => (
+                  <div key={d.id} className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-3 text-sm text-slate-300">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-black text-white">Deposit #{d.id}</div>
+                      <span className={depositStatusChip(d.status)}>{d.status || "-"}</span>
+                    </div>
+                    <div className="mt-1">Amount: {money(d.amount_usd)} • Currency: {String(d.pay_currency || "-").toUpperCase()}</div>
+                    <div className="mt-1 text-xs text-slate-400">Payment ID: {d.payment_id || "-"} • {fmtDate(d.created_at)}</div>
+                    <div className="mt-1 text-xs text-slate-500">Address: {shortText(d.pay_address, 28)}</div>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-4 text-sm text-slate-400">No deposits found.</div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <RecentTransactionsCard
-            transactions={profile.recent_transactions}
-            money={money}
-            fmtDate={fmtDate}
-          />
+          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+              <h2 className="text-xl font-black">Recent Withdrawals</h2>
+              <div className="mt-3 grid gap-2">
+                {profile.recent_withdrawals?.length ? profile.recent_withdrawals.map((w) => (
+                  <div key={w.id} className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-3 text-sm text-slate-300">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-black text-white">Withdrawal #{w.id}</div>
+                      <span className={withdrawalStatusChip(w.status)}>{w.status || "-"}</span>
+                    </div>
+                    <div className="mt-1">Amount: {money(w.amount_usd)} • Currency: {String(w.payout_currency || "-").toUpperCase()}</div>
+                    <div className="mt-1 text-xs text-slate-400">{fmtDate(w.created_at)}</div>
+                    <div className="mt-1 text-xs text-slate-500">Address: {shortText(w.payout_address, 28)} {w.refunded ? "• refunded" : ""}</div>
+                    {w.note ? <div className="mt-1 text-xs text-amber-300">Note: {w.note}</div> : null}
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-4 text-sm text-slate-400">No withdrawals found.</div>
+                )}
+              </div>
+            </div>
 
+            <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
+            <div className="rounded-3xl border border-white/10 bg-[#0f1c24] p-5">
+            <h2 className="text-xl font-black">Password Reset</h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="New Password"
+                className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+              />
+              <input
+                type="password"
+                value={resetPasswordConfirm}
+                onChange={(e) => setResetPasswordConfirm(e.target.value)}
+                placeholder="Confirm New Password"
+                className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={resetUserPassword}
+                disabled={resetPasswordLoading}
+                className="rounded-2xl bg-amber-500 px-4 py-2 font-black text-white disabled:opacity-60"
+              >
+                {resetPasswordLoading ? "Resetting..." : "Reset Password"}
+              </button>
+            </div>
+
+            <div className="mt-3 text-xs text-slate-500">
+              This works for both player and agent accounts, as long as the auth account exists in c2w_users.
+            </div>
+          </div>
+
+            <h2 className="text-xl font-black">Recent Transactions</h2>
+              <div className="mt-3 grid gap-2">
+                {profile.recent_transactions?.length ? profile.recent_transactions.map((t) => (
+                  <div key={t.id} className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-3 text-sm text-slate-300">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-black text-white">{t.type}</div>
+                      <div className={Number(t.amount || 0) >= 0 ? "font-black text-emerald-300" : "font-black text-red-300"}>
+                        {money(t.amount)}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">Balance After: {money(t.balance_after)} • {fmtDate(t.created_at)}</div>
+                    <div className="mt-1 text-xs text-slate-500">Reference: {t.reference || "-"}</div>
+                  </div>
+                )) : (
+                  <div className="rounded-2xl border border-white/5 bg-[#13202a] px-4 py-4 text-sm text-slate-400">No transactions found.</div>
+                )}
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

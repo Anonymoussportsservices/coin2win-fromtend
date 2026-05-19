@@ -1,38 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PlayerShell from "@/components/PlayerShell";
 import FilterPills from "@/components/FilterPills";
 import { getStoredUser } from "@/lib/auth";
 import { API_ENDPOINTS, apiGet } from "@/lib/gameApi";
 
-type DiceBet = {
-  id: number;
-  amount_usd: number;
-  condition: string;
-  target: number;
-  roll: number;
-  win: boolean;
-  payout: number;
-  created_at?: string;
-  nonce?: number | null;
-  client_seed?: string | null;
-  server_seed_hash?: string | null;
-};
-
-type CrashBet = {
-  id: number;
-  round_id?: number;
-  amount_usd: number;
-  auto_cashout?: number | null;
-  status: string;
-  payout: number;
-  created_at?: string;
-};
+type Game = "dice" | "crash" | "coinflip" | "mines" | "hilo";
+type GameFilter = "all" | Game;
 
 type UnifiedBet = {
   key: string;
-  game: "dice" | "crash";
+  game: Game;
   id: number;
   createdAt: string;
   amount: number;
@@ -43,519 +22,130 @@ type UnifiedBet = {
   details: Record<string, string>;
 };
 
-function fmtMoney(value: number | undefined | null) {
-  return `$${Number(value || 0).toFixed(2)}`;
+function money(v:any){ return `$${Number(v||0).toFixed(2)}`; }
+function short(v:any){ const s=String(v||"").trim(); return s.length>22 ? `${s.slice(0,10)}...${s.slice(-10)}` : s || "—"; }
+function time(v:any){ if(!v)return "—"; const d=new Date(String(v).replace(" ","T")); return Number.isNaN(d.getTime()) ? String(v).slice(0,19) : d.toLocaleString(); }
+function profit(p:any,a:any){ return Number(p||0)-Number(a||0); }
+function tone(status:string,payout:number,amount:number){
+  const s=status.toLowerCase();
+  if(["win","won","cashed_out","paid"].includes(s) || payout>amount) return "win";
+  if(["loss","lose","lost","crashed","failed"].includes(s) || payout===0) return "loss";
+  return "neutral";
 }
 
-function fmtTime(value?: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+export default function BetsPage(){
+  const user=getStoredUser();
+  const userId=user?.user_id || "player_001";
 
-function shortHash(value?: string | null, size: number = 10) {
-  const v = String(value || "").trim();
-  if (!v) return "—";
-  if (v.length <= size * 2) return v;
-  return `${v.slice(0, size)}...${v.slice(-size)}`;
-}
+  const [filter,setFilter]=useState<GameFilter>("all");
+  const [bets,setBets]=useState<UnifiedBet[]>([]);
+  const [expanded,setExpanded]=useState<string|null>(null);
+  const [error,setError]=useState("");
 
-type DatePreset = "all" | "today" | "yesterday" | "7d" | "30d";
-
-function toLocalYmd(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getDateRangeFromPreset(preset: DatePreset) {
-  const now = new Date();
-
-  if (preset === "all") {
-    return { startDate: "", endDate: "" };
-  }
-
-  if (preset === "today") {
-    const ymd = toLocalYmd(now);
-    return { startDate: ymd, endDate: ymd };
-  }
-
-  if (preset === "yesterday") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 1);
-    const ymd = toLocalYmd(d);
-    return { startDate: ymd, endDate: ymd };
-  }
-
-  if (preset === "7d") {
-    const start = new Date(now);
-    start.setDate(start.getDate() - 6);
-    return { startDate: toLocalYmd(start), endDate: toLocalYmd(now) };
-  }
-
-  const start = new Date(now);
-  start.setDate(start.getDate() - 29);
-  return { startDate: toLocalYmd(start), endDate: toLocalYmd(now) };
-}
-
-export default function BetsPage() {
-  const user = getStoredUser();
-  const userId = user?.user_id ?? "";
-
-  const [diceBets, setDiceBets] = useState<DiceBet[]>([]);
-  const [crashBets, setCrashBets] = useState<CrashBet[]>([]);
-  const [error, setError] = useState("");
-  const [gameFilter, setGameFilter] = useState<"all" | "dice" | "crash">("all");
-  const [datePreset, setDatePreset] = useState<DatePreset>("all");
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function load() {
-      if (!userId) return;
-
-      try {
-        const { startDate, endDate } = getDateRangeFromPreset(datePreset);
-
-        const diceParams = new URLSearchParams();
-        const crashParams = new URLSearchParams();
-
-        if (startDate) {
-          diceParams.set("start_date", startDate);
-          crashParams.set("start_date", startDate);
-        }
-
-        if (endDate) {
-          diceParams.set("end_date", endDate);
-          crashParams.set("end_date", endDate);
-        }
-
-        const diceUrl = diceParams.toString()
-          ? `${API_ENDPOINTS.diceBets(userId)}?${diceParams.toString()}`
-          : API_ENDPOINTS.diceBets(userId);
-
-        const crashUrl = crashParams.toString()
-          ? `${API_ENDPOINTS.crashGlobalMyBets(userId)}?${crashParams.toString()}`
-          : API_ENDPOINTS.crashGlobalMyBets(userId);
-
-        const [diceData, crashData] = await Promise.all([
-          apiGet(diceUrl).catch(() => ({ bets: [] })),
-          apiGet(crashUrl).catch(() => ({ bets: [] })),
+  useEffect(()=>{
+    async function load(){
+      try{
+        const [dice,crash,coinflip,mines,hilo]=await Promise.all([
+          apiGet(API_ENDPOINTS.diceBets(userId)).catch(()=>({bets:[]})),
+          apiGet(API_ENDPOINTS.crashGlobalMyBets(userId)).catch(()=>({bets:[]})),
+          apiGet(API_ENDPOINTS.coinflipBets(userId)).catch(()=>({bets:[]})),
+          apiGet(API_ENDPOINTS.minesBets(userId)).catch(()=>({bets:[]})),
+          apiGet(API_ENDPOINTS.hiloBets(userId)).catch(()=>({bets:[]})),
         ]);
 
-        setDiceBets(Array.isArray(diceData?.bets) ? diceData.bets : []);
-        setCrashBets(Array.isArray(crashData?.bets) ? crashData.bets : []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load bets");
-      }
+        const out:UnifiedBet[]=[];
+
+        for(const b of (dice?.bets||[])){
+          const a=Number(b.amount_usd||0), p=Number(b.payout||0);
+          out.push({key:`dice-${b.id}`,game:"dice",id:b.id,createdAt:b.created_at||"",amount:a,payout:p,profit:profit(p,a),statusLabel:b.win?"Win":"Loss",tone:b.win?"win":"loss",details:{Condition:`${b.condition} ${b.target}`,Roll:String(b.roll??"—"),Nonce:String(b.nonce??"—"),"Client Seed":short(b.client_seed),"Server Seed Hash":short(b.server_seed_hash)}});
+        }
+
+        for(const b of (crash?.bets||[])){
+          const a=Number(b.amount_usd||0), p=Number(b.payout||0), st=String(b.status||"Pending");
+          out.push({key:`crash-${b.id}`,game:"crash",id:b.id,createdAt:b.created_at||"",amount:a,payout:p,profit:profit(p,a),statusLabel:st,tone:tone(st,p,a),details:{"Round ID":String(b.round_id??"—"),"Auto Cashout":b.auto_cashout?`${Number(b.auto_cashout).toFixed(2)}x`:"—"}});
+        }
+
+        for(const b of (coinflip?.bets||[])){
+          const a=Number(b.amount_usd||0), p=Number(b.payout||0), st=b.win?"Win":"Loss";
+          out.push({key:`coinflip-${b.id}`,game:"coinflip",id:b.id,createdAt:b.created_at||"",amount:a,payout:p,profit:profit(p,a),statusLabel:st,tone:b.win?"win":"loss",details:{Choice:String(b.choice||"—"),Result:String(b.result||"—")}});
+        }
+
+        for(const b of (mines?.bets||[])){
+          const a=Number(b.amount_usd||0), p=Number(b.payout||0), st=String(b.status||"Pending");
+          out.push({key:`mines-${b.id}`,game:"mines",id:b.id,createdAt:b.created_at||b.updated_at||"",amount:a,payout:p,profit:profit(p,a),statusLabel:st,tone:tone(st,p,a),details:{Mines:String(b.mine_count??"—"),"Safe Reveals":String(b.safe_reveals??"—"),Multiplier:`x${Number(b.multiplier||1).toFixed(2)}`,"Hit Mine":String(!!b.hit_mine)}});
+        }
+
+        for(const b of (hilo?.bets||[])){
+          const a=Number(b.amount_usd||0), p=Number(b.payout||0), st=String(b.status||"Pending");
+          out.push({key:`hilo-${b.id}`,game:"hilo",id:b.id,createdAt:b.created_at||b.updated_at||"",amount:a,payout:p,profit:profit(p,a),statusLabel:st,tone:tone(st,p,a),details:{Choice:String(b.choice||"—"),"Start Card":String(b.start_card??"—"),"Result Card":String(b.result_card??"—"),Streak:String(b.streak??0),Multiplier:`x${Number(b.multiplier||1).toFixed(2)}`}});
+        }
+
+        out.sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime());
+        setBets(out);
+      }catch(e:any){ setError(e?.message||"Failed to load bets"); }
     }
-
     load();
-  }, [userId, datePreset]);
+  },[userId]);
 
-  const unifiedBets = useMemo<UnifiedBet[]>(() => {
-    const dice: UnifiedBet[] = diceBets.map((bet) => {
-      const amount = Number(bet.amount_usd || 0);
-      const payout = Number(bet.payout || 0);
-      const profit = payout - amount;
-
-      return {
-        key: `dice-${bet.id}`,
-        game: "dice",
-        id: bet.id,
-        createdAt: bet.created_at || "",
-        amount,
-        payout,
-        profit,
-        statusLabel: bet.win ? "Win" : "Loss",
-        tone: bet.win ? "win" : "loss",
-        details: {
-          Condition: `${bet.condition} ${bet.target}`,
-          Roll: String(bet.roll ?? "—"),
-          Nonce: String(bet.nonce ?? "—"),
-          "Client Seed": bet.client_seed || "—",
-          "Server Seed Hash": shortHash(bet.server_seed_hash),
-        },
-      };
-    });
-
-    const crash: UnifiedBet[] = crashBets.map((bet) => {
-      const amount = Number(bet.amount_usd || 0);
-      const payout = Number(bet.payout || 0);
-      const profit = payout - amount;
-      const status = String(bet.status || "Pending");
-      const lower = status.toLowerCase();
-
-      return {
-        key: `crash-${bet.id}`,
-        game: "crash",
-        id: bet.id,
-        createdAt: bet.created_at || "",
-        amount,
-        payout,
-        profit,
-        statusLabel: status,
-        tone:
-          payout > amount || ["cashed_out", "won", "win"].includes(lower)
-            ? "win"
-            : ["lost", "crashed"].includes(lower)
-            ? "loss"
-            : "neutral",
-        details: {
-          "Round ID": String(bet.round_id ?? "—"),
-          "Auto Cashout": bet.auto_cashout ? `${Number(bet.auto_cashout).toFixed(2)}x` : "—",
-        },
-      };
-    });
-
-    return [...dice, ...crash].sort((a, b) => {
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    });
-  }, [diceBets, crashBets]);
-
-  const filteredBets = useMemo(() => {
-    if (gameFilter === "all") return unifiedBets;
-    return unifiedBets.filter((bet) => bet.game === gameFilter);
-  }, [gameFilter, unifiedBets]);
+  const shown=useMemo(()=>filter==="all"?bets:bets.filter(b=>b.game===filter),[bets,filter]);
 
   return (
-    <PlayerShell
-      title="My Bets"
-      subtitle="Review your recent Crash and Dice activity."
-    >
-      <div style={wrapStyle}>
-        {error ? <div style={errorStyle}>{error}</div> : null}
+    <PlayerShell title="My Bets" subtitle="Review all Coin2Win Originals activity.">
+      <div style={{display:"grid",gap:16}}>
+        {error?<div style={{background:"#3b1219",color:"#fecaca",padding:12,borderRadius:12}}>{error}</div>:null}
 
-        <div style={toolbarStyle}>
-          <div style={toolbarTitleWrapStyle}>
-            <div style={toolbarTitleStyle}>Bet History</div>
-            <div style={toolbarSubStyle}>{filteredBets.length} bets shown</div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#9fb2c7", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                Game
-              </div>
-              <FilterPills
-                options={[
-                  { value: "all", label: "All Games" },
-                  { value: "dice", label: "Dice" },
-                  { value: "crash", label: "Crash" },
-                ]}
-                value={gameFilter}
-                onChange={(value) => setGameFilter(value as "all" | "dice" | "crash")}
-              />
+        <div style={{background:"#1a2c38",border:"1px solid rgba(255,255,255,.06)",borderRadius:18,padding:16,display:"grid",gap:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:22,fontWeight:950,color:"#fff"}}>Bet History</div>
+              <div style={{color:"#8ea2b5",fontSize:13}}>{shown.length} bets shown</div>
             </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#9fb2c7", textTransform: "uppercase", letterSpacing: 0.6 }}>
-                Date
-              </div>
-              <FilterPills
-                options={[
-                  { value: "all", label: "All Time" },
-                  { value: "today", label: "Today" },
-                  { value: "yesterday", label: "Yesterday" },
-                  { value: "7d", label: "Last 7 Days" },
-                  { value: "30d", label: "Last 30 Days" },
-                ]}
-                value={datePreset}
-                onChange={(value) => setDatePreset(value as DatePreset)}
-              />
-            </div>
+            <FilterPills options={[
+              {value:"all",label:"All"},
+              {value:"dice",label:"Dice"},
+              {value:"crash",label:"Crash"},
+              {value:"coinflip",label:"Coinflip"},
+              {value:"mines",label:"Mines"},
+              {value:"hilo",label:"Hi-Lo"},
+            ]} value={filter} onChange={(v)=>setFilter(v as GameFilter)} />
           </div>
         </div>
 
-        <div style={listStyle}>
-          {filteredBets.length ? (
-            filteredBets.map((bet) => {
-              const isExpanded = expandedKey === bet.key;
-              const toneColor =
-                bet.tone === "win" ? "#86efac" : bet.tone === "loss" ? "#fca5a5" : "#cbd5e1";
-              const toneBg =
-                bet.tone === "win"
-                  ? "rgba(0,231,1,0.12)"
-                  : bet.tone === "loss"
-                  ? "rgba(255,93,93,0.12)"
-                  : "rgba(255,255,255,0.06)";
-
-              return (
-                <div key={bet.key} style={betCardStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedKey((prev) => (prev === bet.key ? null : bet.key))}
-                    style={betButtonStyle}
-                  >
-                    <div style={betTopRowStyle}>
-                      <div style={betTopLeftStyle}>
-                        <span
-                          style={{
-                            ...gameBadgeStyle,
-                            background: bet.game === "dice" ? "rgba(14,165,233,0.15)" : "rgba(168,85,247,0.16)",
-                            color: bet.game === "dice" ? "#7dd3fc" : "#d8b4fe",
-                          }}
-                        >
-                          {bet.game === "dice" ? "Dice" : "Crash"}
-                        </span>
-
-                        <span
-                          style={{
-                            ...statusBadgeStyle,
-                            color: toneColor,
-                            background: toneBg,
-                          }}
-                        >
-                          {bet.statusLabel}
-                        </span>
-                      </div>
-
-                      <div style={betTopRightStyle}>
-                        <span style={timeStyle}>{fmtTime(bet.createdAt)}</span>
-                        <span style={expandStyle}>{isExpanded ? "▲" : "▼"}</span>
-                      </div>
-                    </div>
-
-                    <div style={metricsGridStyle}>
-                      <Metric label="Bet ID" value={`#${bet.id}`} />
-                      <Metric label="Amount" value={fmtMoney(bet.amount)} />
-                      <Metric label="Payout" value={fmtMoney(bet.payout)} />
-                      <Metric
-                        label="Profit"
-                        value={`${bet.profit > 0 ? "+" : ""}${fmtMoney(bet.profit).replace("$", "$")}`}
-                        valueColor={bet.profit > 0 ? "#86efac" : bet.profit < 0 ? "#fca5a5" : "#fff"}
-                      />
-                    </div>
-                  </button>
-
-                  {isExpanded ? (
-                    <div style={detailsWrapStyle}>
-                      {Object.entries(bet.details).map(([label, value]) => (
-                        <div key={label} style={detailItemStyle}>
-                          <div style={detailLabelStyle}>{label}</div>
-                          <div style={detailValueStyle}>{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
+        <div style={{display:"grid",gap:10}}>
+          {shown.map(b=>(
+            <div key={b.key} style={{background:"#1a2c38",border:"1px solid rgba(255,255,255,.06)",borderRadius:16,padding:14}}>
+              <button onClick={()=>setExpanded(expanded===b.key?null:b.key)} style={{width:"100%",background:"transparent",border:0,color:"#fff",textAlign:"left",cursor:"pointer"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <span style={{background:b.tone==="win"?"#143827":b.tone==="loss"?"#3b1219":"#213743",color:b.tone==="win"?"#86efac":b.tone==="loss"?"#fca5a5":"#cbd5e1",borderRadius:8,padding:"6px 9px",fontSize:11,fontWeight:950,textTransform:"uppercase"}}>{b.statusLabel}</span>
+                    <b style={{textTransform:"capitalize"}}>{b.game} #{b.id}</b>
+                    <span style={{color:"#8ea2b5",fontSize:12}}>{time(b.createdAt)}</span>
+                  </div>
+                  <span style={{color:"#8ea2b5"}}>{expanded===b.key?"▲":"▼"}</span>
                 </div>
-              );
-            })
-          ) : (
-            <div style={emptyStyle}>No bets found yet.</div>
-          )}
+
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8,marginTop:12}}>
+                  <Box l="Bet" v={money(b.amount)} />
+                  <Box l="Payout" v={money(b.payout)} />
+                  <Box l="Profit" v={`${b.profit>0?"+":""}${money(b.profit)}`} color={b.profit>=0?"#86efac":"#fca5a5"} />
+                  <Box l="Game" v={b.game.toUpperCase()} />
+                </div>
+              </button>
+
+              {expanded===b.key?(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginTop:10}}>
+                  {Object.entries(b.details).map(([k,v])=><Box key={k} l={k} v={v}/>)}
+                </div>
+              ):null}
+            </div>
+          ))}
+          {!shown.length?<div style={{color:"#8ea2b5",padding:16}}>No bets found.</div>:null}
         </div>
       </div>
     </PlayerShell>
   );
 }
 
-function Metric({
-  label,
-  value,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  valueColor?: string;
-}) {
-  return (
-    <div style={metricCardStyle}>
-      <div style={metricLabelStyle}>{label}</div>
-      <div style={{ ...metricValueStyle, color: valueColor || "#fff" }}>{value}</div>
-    </div>
-  );
+function Box({l,v,color}:{l:string;v:string;color?:string}){
+  return <div style={{background:"#0f212e",borderRadius:10,padding:"9px 10px"}}><div style={{fontSize:11,color:"#8ea2b5"}}>{l}</div><div style={{fontWeight:900,color:color||"#fff",overflowWrap:"anywhere"}}>{v}</div></div>
 }
-
-const wrapStyle: CSSProperties = {
-  width: "100%",
-  maxWidth: "100%",
-  margin: "0 auto",
-  display: "grid",
-  gap: 18,
-  boxSizing: "border-box",
-};
-
-const toolbarStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const toolbarTitleWrapStyle: CSSProperties = {
-  display: "grid",
-  gap: 4,
-};
-
-const toolbarTitleStyle: CSSProperties = {
-  color: "#fff",
-  fontSize: 22,
-  fontWeight: 900,
-};
-
-const toolbarSubStyle: CSSProperties = {
-  color: "#8ea3b3",
-  fontSize: 13,
-};
-
-const filterWrapStyle: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const filterButtonStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 999,
-  padding: "10px 14px",
-  fontWeight: 800,
-  fontSize: 13,
-  cursor: "pointer",
-};
-
-const listStyle: CSSProperties = {
-  display: "grid",
-  gap: 12,
-};
-
-const betCardStyle: CSSProperties = {
-  background: "#1a2c38",
-  border: "1px solid rgba(255,255,255,0.05)",
-  borderRadius: 18,
-  boxShadow: "0 14px 40px rgba(0,0,0,0.18)",
-  overflow: "hidden",
-};
-
-const betButtonStyle: CSSProperties = {
-  width: "100%",
-  border: "none",
-  background: "transparent",
-  textAlign: "left",
-  padding: 16,
-  cursor: "pointer",
-};
-
-const betTopRowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const betTopLeftStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const betTopRightStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-};
-
-const gameBadgeStyle: CSSProperties = {
-  borderRadius: 999,
-  padding: "6px 10px",
-  fontWeight: 800,
-  fontSize: 12,
-};
-
-const statusBadgeStyle: CSSProperties = {
-  borderRadius: 999,
-  padding: "6px 10px",
-  fontWeight: 800,
-  fontSize: 12,
-};
-
-const timeStyle: CSSProperties = {
-  color: "#8ea3b3",
-  fontSize: 12,
-};
-
-const expandStyle: CSSProperties = {
-  color: "#8ea3b3",
-  fontSize: 12,
-  fontWeight: 800,
-};
-
-const metricsGridStyle: CSSProperties = {
-  marginTop: 14,
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-  gap: 10,
-};
-
-const metricCardStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.05)",
-  borderRadius: 12,
-  padding: "10px 12px",
-};
-
-const metricLabelStyle: CSSProperties = {
-  color: "#8ea3b3",
-  fontSize: 11,
-  marginBottom: 4,
-};
-
-const metricValueStyle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 800,
-};
-
-const detailsWrapStyle: CSSProperties = {
-  borderTop: "1px solid rgba(255,255,255,0.05)",
-  padding: 16,
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 10,
-  background: "rgba(255,255,255,0.02)",
-};
-
-const detailItemStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  borderRadius: 12,
-  padding: "10px 12px",
-};
-
-const detailLabelStyle: CSSProperties = {
-  color: "#8ea3b3",
-  fontSize: 11,
-  marginBottom: 4,
-};
-
-const detailValueStyle: CSSProperties = {
-  color: "#fff",
-  fontSize: 13,
-  fontWeight: 700,
-  wordBreak: "break-word",
-};
-
-const emptyStyle: CSSProperties = {
-  background: "#1a2c38",
-  border: "1px solid rgba(255,255,255,0.05)",
-  borderRadius: 18,
-  padding: 18,
-  color: "#8ea3b3",
-  fontWeight: 700,
-};
-
-const errorStyle: CSSProperties = {
-  background: "rgba(239,68,68,0.12)",
-  color: "#fecaca",
-  border: "1px solid rgba(239,68,68,0.22)",
-  borderRadius: 12,
-  padding: "10px 12px",
-  fontWeight: 700,
-};

@@ -108,10 +108,6 @@ function tabBtn(active: boolean) {
 }
 
 export default function AgentWithdrawalsPage() {
-  const viewerId =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("agent_viewer_id") || JSON.parse(localStorage.getItem("agent_session_data") || "{}").id || "supercoin")
-      : "supercoin";
   const [tab, setTab] = useState<TabKey>("requested");
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [queues, setQueues] = useState<Record<string, QueueResponse | null>>({
@@ -151,14 +147,20 @@ export default function AgentWithdrawalsPage() {
       setLoading(true);
       setMessage("");
 
+      const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
+      const currentViewerId =
+        localStorage.getItem("agent_viewer_id") ||
+        session?.id ||
+        "supercoin";
+
       const [metricsJson, requestedJson, approvedJson, sentJson, failedJson, allJson] =
         await Promise.all([
-          fetchJson(`/ui-api/admin/withdrawals/metrics?viewer_id=${encodeURIComponent(viewerId)}`),
-          fetchJson(`/ui-api/admin/withdrawals/queue/requested?viewer_id=${encodeURIComponent(viewerId)}`),
-          fetchJson(`/ui-api/admin/withdrawals/queue/approved?viewer_id=${encodeURIComponent(viewerId)}`),
-          fetchJson(`/ui-api/admin/withdrawals/queue/sent?viewer_id=${encodeURIComponent(viewerId)}`),
-          fetchJson(`/ui-api/admin/withdrawals/queue/failed?viewer_id=${encodeURIComponent(viewerId)}`),
-          fetchJson(`/ui-api/admin/withdrawals?viewer_id=${encodeURIComponent(viewerId)}&limit=50&sort=id_desc`),
+          fetchJson(`/ui-api/admin/withdrawals/metrics?viewer_id=${encodeURIComponent(currentViewerId)}`),
+          fetchJson(`/ui-api/admin/withdrawals/queue/requested?viewer_id=${encodeURIComponent(currentViewerId)}`),
+          fetchJson(`/ui-api/admin/withdrawals/queue/approved?viewer_id=${encodeURIComponent(currentViewerId)}`),
+          fetchJson(`/ui-api/admin/withdrawals/queue/sent?viewer_id=${encodeURIComponent(currentViewerId)}`),
+          fetchJson(`/ui-api/admin/withdrawals/queue/failed?viewer_id=${encodeURIComponent(currentViewerId)}`),
+          fetchJson(`/ui-api/admin/withdrawals?limit=50&sort=id_desc&viewer_id=${encodeURIComponent(currentViewerId)}`),
         ]);
 
       setMetrics(metricsJson);
@@ -180,27 +182,10 @@ export default function AgentWithdrawalsPage() {
     loadAll();
   }, []);
 
-  useEffect(() => {
-    const tick = async () => {
-      if (document.visibilityState !== "visible") return;
-      if (busyId !== null) return;
-
-      try {
-        await loadAll();
-        if (detail?.id) {
-          await openDetail(detail.id);
-        }
-      } catch {}
-    };
-
-    const id = window.setInterval(tick, 15000);
-    return () => window.clearInterval(id);
-  }, [busyId, detail?.id]);
-
   async function openDetail(id: number) {
     try {
       setDetailLoading(true);
-      const json = await fetchJson(`/ui-api/admin/withdrawals/${id}?viewer_id=${encodeURIComponent(viewerId)}`);
+      const json = await fetchJson(`/ui-api/admin/withdrawals/${id}`);
       setDetail(json);
     } catch (e: any) {
       setMessage(e?.message || "Failed to load withdrawal detail");
@@ -276,14 +261,9 @@ export default function AgentWithdrawalsPage() {
     <div className="mx-auto w-full max-w-7xl">
       <div className="mb-6">
         <h1 className="text-2xl font-black md:text-3xl">Withdrawals</h1>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm md:text-base">
-          <p className="text-slate-400">
-            Review and process payout requests using live operator queues.
-          </p>
-          <span className="inline-flex items-center rounded-full border border-emerald-500/20 bg-emerald-500/15 px-2.5 py-1 text-xs font-black text-emerald-300">
-            Auto-refresh 15s
-          </span>
-        </div>
+        <p className="mt-1 text-sm text-slate-400 md:text-base">
+          Review and process payout requests using live operator queues.
+        </p>
       </div>
 
       {message ? (

@@ -91,7 +91,7 @@ stat_replacement = '''function Stat({ label, value }: { label: string; value: st
       style={{
         flex: "1 1 92px",
         minWidth: "92px",
-        background: "#020617",
+        background: "#0a0a0a",
         border: "1px solid rgba(255,255,255,0.05)",
         borderRadius: "10px",
         padding: "8px 10px",

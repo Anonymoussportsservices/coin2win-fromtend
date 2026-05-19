@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { DEFAULT_BRAND, fetchPublicBrand, type PublicBrand } from "@/lib/publicBrand"
 import PlayerShell from "@/components/PlayerShell"
 import CasinoCategoryRow from "@/components/CasinoCategoryRow"
@@ -57,7 +58,9 @@ export default function CasinoLobbyPage() {
   ).filter(Boolean)
 
   const casinoBanners = Array.isArray(brand.casino_banners_json) ? brand.casino_banners_json : [];
-  const casinoBannerImage = casinoBanners[0]?.image_url || casinoBanners[0]?.mobile_image_url || "";
+  const casinoBanner = casinoBanners[0] || null;
+  const casinoBannerImage = casinoBanner?.image_url || "";
+  const casinoBannerHref = casinoBanner?.cta_href || "/casino";
 
   return (
     <PlayerShell
@@ -67,15 +70,16 @@ export default function CasinoLobbyPage() {
     >
       <div className="w-full max-w-full overflow-x-hidden grid gap-3 text-white sm:gap-4">
         {casinoBannerImage ? (
-          <section
-            className="relative w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_18px_40px_rgba(0,0,0,0.30)] sm:rounded-3xl"
+          <Link
+            href={casinoBannerHref}
+            className="relative block w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_18px_40px_rgba(0,0,0,0.30)] sm:rounded-3xl"
             style={{ aspectRatio: "16 / 5" }}
           >
             <div
               className="absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url(${casinoBannerImage})` }}
             />
-          </section>
+          </Link>
         ) : null}
 
         <section className="w-full max-w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70 p-2.5 shadow-sm sm:p-3">

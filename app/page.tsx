@@ -96,13 +96,14 @@ function HeroCarousel({ banners }: { banners: PublicCmsBanner[] }) {
 
   if (!banner) return null;
 
-  const bgImage = banner.image_url || banner.mobile_image_url || "";
+  const bgImage = banner.image_url || "";
   const href = banner.cta_href || "/casino";
-  const label = banner.cta_label || "";
 
   return (
-    <section
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#1a2c38] shadow-[0_18px_44px_rgba(0,0,0,0.28)]" style={{ aspectRatio: "16 / 5" }}
+    <Link
+      href={href}
+      className="relative block overflow-hidden rounded-3xl border border-white/10 bg-[#1a2c38] shadow-[0_18px_44px_rgba(0,0,0,0.28)]"
+      style={{ aspectRatio: "16 / 5" }}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -112,26 +113,6 @@ function HeroCarousel({ banners }: { banners: PublicCmsBanner[] }) {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(0,231,1,0.22),transparent_35%),linear-gradient(135deg,#213743,#0f212e)]" />
       )}
 
-      <div className="absolute inset-0 bg-gradient-to-r from-[#071824]/45 via-[#071824]/18 to-transparent" />
-
-      <div className="relative z-10 flex h-full max-w-2xl flex-col justify-end p-5 sm:p-8">
-        {(banner.badge || "").trim() ? (
-          <div className="mb-3 inline-flex w-fit rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-300">
-            {banner.badge}
-          </div>
-        ) : null}
-
-        <h1 className="text-4xl font-black leading-tight text-white sm:text-6xl">
-          {banner.title || ""}
-        </h1>
-
-        <Link
-          href={href}
-          className="mt-6 inline-flex w-fit rounded-xl bg-emerald-400 px-5 py-3 text-sm font-black text-[#071824] transition hover:bg-emerald-300"
-        >
-          {label}
-        </Link>
-      </div>
 
       {safeBanners.length > 1 ? (
         <>
@@ -166,7 +147,7 @@ function HeroCarousel({ banners }: { banners: PublicCmsBanner[] }) {
           </div>
         </>
       ) : null}
-    </section>
+    </Link>
   );
 }
 
@@ -228,13 +209,12 @@ export default function HomePage() {
   const featuredCategory = {
     id: "featured",
     label: "Featured Games",
-    description: "Promoted casino picks controlled from Casino Games backoffice.",
+    description: "",
   };
 
   return (
     <PlayerShell
       title={brand.brand_name || "Coin2Win"}
-      subtitle="Stake-style casino home with CMS-ready banners."
       fullWidth
     >
       <main className="grid w-full gap-4 text-white sm:gap-5">

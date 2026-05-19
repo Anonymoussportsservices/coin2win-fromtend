@@ -1,3 +1,13 @@
+export type PublicCmsBanner = {
+  badge?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  image_url?: string | null;
+  mobile_image_url?: string | null;
+  cta_label?: string | null;
+  cta_href?: string | null;
+};
+
 export type PublicBrand = {
   owner_user_id?: string | null;
   brand_name?: string | null;
@@ -7,6 +17,10 @@ export type PublicBrand = {
   secondary_color?: string | null;
   support_email?: string | null;
   support_telegram?: string | null;
+  home_banners_json?: PublicCmsBanner[] | null;
+  casino_banners_json?: PublicCmsBanner[] | null;
+  promotion_cards_json?: any[] | null;
+  promotion_faq_json?: any[] | null;
   is_active?: boolean;
 };
 

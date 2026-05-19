@@ -19,10 +19,27 @@ export function getStoredUser(): StoredUser | null {
   if (typeof window === "undefined") return null;
 
   const fromAuthUser = safeParse(localStorage.getItem("auth_user"));
-  if (fromAuthUser && typeof fromAuthUser === "object") return fromAuthUser;
+  if (fromAuthUser && typeof fromAuthUser === "object") return fromAuthUser as StoredUser;
 
   const fromUser = safeParse(localStorage.getItem("user"));
-  if (fromUser && typeof fromUser === "object") return fromUser;
+  if (fromUser && typeof fromUser === "object") return fromUser as StoredUser;
+
+  const token = localStorage.getItem("token");
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      const fallbackUser = {
+        user_id: payload?.sub || payload?.user_id || payload?.username || "",
+        email: payload?.email || "",
+        username: payload?.username || payload?.sub || "",
+      };
+      if (fallbackUser.user_id) {
+        localStorage.setItem("auth_user", JSON.stringify(fallbackUser));
+        localStorage.setItem("user", JSON.stringify(fallbackUser));
+        return fallbackUser;
+      }
+    } catch {}
+  }
 
   return null;
 }

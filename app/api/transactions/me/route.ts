@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization") || "";
-  const qs = req.nextUrl.searchParams.toString();
+  try {
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const qs = req.nextUrl.searchParams.toString();
+    const auth = req.headers.get("authorization") || "";
 
-  const res = await fetch(`${API_BASE}/transactions/me${qs ? `?${qs}` : ""}`, {
-    headers: {
-      Accept: "application/json",
-      ...(auth ? { Authorization: auth } : {}),
-    },
-    cache: "no-store",
-  });
+    const res = await fetch(`${base}/transactions/me${qs ? `?${qs}` : ""}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        ...(auth ? { Authorization: auth } : {}),
+      },
+      cache: "no-store",
+    });
 
-  const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json({ detail: "Transactions proxy error" }, { status: 500 });
+  }
 }

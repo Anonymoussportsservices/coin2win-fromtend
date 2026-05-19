@@ -25,6 +25,16 @@ export const API_ENDPOINTS = {
   diceSeed: (userId: string) => `/api/studio/dice/seed/${encodeURIComponent(userId)}`,
   diceSetClientSeed: (userId: string) => `/api/studio/dice/seed/${encodeURIComponent(userId)}/client`,
   diceRotateSeed: (userId: string) => `/api/studio/dice/seed/${encodeURIComponent(userId)}/rotate`,
+  coinflipBet: "/api/studio/coinflip/bet",
+  coinflipBets: (userId: string) => `/api/studio/coinflip/bets/${encodeURIComponent(userId)}`,
+  minesStart: "/api/studio/mines/start",
+  minesReveal: "/api/studio/mines/reveal",
+  minesCashout: "/api/studio/mines/cashout",
+  minesBets: (userId: string) => `/api/studio/mines/bets/${encodeURIComponent(userId)}`,
+  hiloStart: "/api/studio/hilo/start",
+  hiloNext: "/api/studio/hilo/next",
+  hiloCashout: "/api/studio/hilo/cashout",
+  hiloBets: (userId: string) => `/api/studio/hilo/bets/${encodeURIComponent(userId)}`,
 };
 
 function buildHeaders(extra?: Record<string, string>) {

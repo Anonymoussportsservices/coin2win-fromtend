@@ -9,9 +9,10 @@ const baseNavItems = [
   { label: "Billing", href: "/agent/billing", icon: "💼" },
   { label: "Users", href: "/agent/users", icon: "👥" },
   { label: "Deposits", href: "/agent/deposits", icon: "💳" },
-  { label: "CRM", href: "/agent/crm", icon: "🎯" },
-  { label: "KYC", href: "/agent/kyc", icon: "🪪" },
   { label: "Withdrawals", href: "/agent/withdrawals", icon: "💸" },
+  { label: "KYC", href: "/agent/kyc", icon: "🪪" },
+  { label: "CRM", href: "/agent/crm", icon: "🎯" },
+  { label: "Intelligence", href: "/agent/intelligence", icon: "🧠" },
   { label: "Brand CMS", href: "/admin/brands", icon: "🎨" },
   { label: "Casino Games", href: "/agent/casino/games", icon: "🎰" },
 ];
@@ -41,6 +42,7 @@ export default function AgentShell({
   const [viewerId, setViewerId] = useState("");
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [pendingWithdrawals, setPendingWithdrawals] = useState(0);
   useEffect(() => {
     try {
       const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
@@ -70,6 +72,17 @@ export default function AgentShell({
     const resolved = fromUrl || fromStorage || sessionId || "";
     if (resolved) localStorage.setItem("agent_viewer_id", resolved);
     setViewerId(resolved);
+
+    if (resolved) {
+      fetch(`/ui-api/admin/withdrawals/metrics?viewer_id=${encodeURIComponent(resolved)}`, {
+        cache: "no-store",
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          setPendingWithdrawals(Number(data?.requested || data?.metrics?.requested || 0));
+        })
+        .catch(() => setPendingWithdrawals(0));
+    }
 
     const host = window.location.hostname;
 
@@ -177,7 +190,14 @@ export default function AgentShell({
                   }
                 >
                   <span>{item.icon}</span>
-                  <span>{item.label}</span>
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                    <span>{item.label}</span>
+                    {item.href === "/agent/withdrawals" && pendingWithdrawals > 0 ? (
+                      <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-black text-white">
+                        {pendingWithdrawals}
+                      </span>
+                    ) : null}
+                  </span>
                 </Link>
               );
             })}

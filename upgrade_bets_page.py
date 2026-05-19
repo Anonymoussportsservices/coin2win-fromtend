@@ -451,7 +451,7 @@ const detailsWrapStyle: CSSProperties = {
 };
 
 const detailItemStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
+  background: "rgba(255,255,255,0.03)",
   borderRadius: 12,
   padding: "10px 12px",
 };

@@ -12,16 +12,12 @@ type ActivityResponse = {
     withdrawals: number;
     dice_bets: number;
     crash_bets: number;
-    transactions: number;
-    adjustments: number;
     total_items: number;
   };
   deposits: any[];
   withdrawals: any[];
   dice_bets: any[];
   crash_bets: any[];
-  transactions: any[];
-  adjustments: any[];
   all_activity: any[];
   detail?: string;
 };
@@ -36,7 +32,7 @@ function fmtDate(v?: string | null) {
   return isNaN(d.getTime()) ? "-" : d.toLocaleString();
 }
 
-function shortText(v: any, n = 40) {
+function shortText(v: any, n = 28) {
   const s = String(v || "");
   return s.length > n ? `${s.slice(0, n)}...` : s || "-";
 }
@@ -46,9 +42,6 @@ function getTs(x: any) {
 }
 
 function getAmount(x: any) {
-  if (x?.__kind === "adjustment" || x?.__kind === "transaction" || String(x?.__kind || "").startsWith("transaction_")) {
-    return x?.amount ?? 0;
-  }
   return x?.amount_usd ?? x?.amount ?? x?.stake ?? x?.bet_amount ?? x?.wager ?? 0;
 }
 
@@ -57,16 +50,13 @@ function getPayout(x: any) {
 }
 
 function getProfit(x: any) {
-  if (x?.__kind === "adjustment" || x?.__kind === "transaction" || String(x?.__kind || "").startsWith("transaction_")) {
-    return Number(x?.amount || 0);
-  }
   const amount = Number(getAmount(x) || 0);
   const payout = Number(getPayout(x) || 0);
   return payout - amount;
 }
 
 function getStatus(x: any) {
-  return x?.status ?? x?.result ?? x?.type ?? (typeof x?.is_win === "boolean" ? (x.is_win ? "win" : "lose") : "-");
+  return x?.status ?? x?.result ?? (typeof x?.is_win === "boolean" ? (x.is_win ? "win" : "lose") : "-");
 }
 
 function getSearchBlob(x: any) {
@@ -75,13 +65,12 @@ function getSearchBlob(x: any) {
     x?.__kind,
     x?.status,
     x?.result,
-    x?.type,
-    x?.reference,
-    x?.note,
     x?.payout_currency,
     x?.pay_currency,
     x?.payout_address,
     x?.pay_address,
+    x?.note,
+    x?.reference,
     x?.target,
     x?.roll,
     x?.multiplier,
@@ -102,24 +91,11 @@ function inputCls() {
 }
 
 function cardCls(kind: string) {
-  if (kind === "deposit" || kind === "transaction_deposit") return "border-emerald-500/20";
-  if (kind === "withdrawal" || kind === "transaction_withdrawal") return "border-amber-500/20";
+  if (kind === "deposit") return "border-emerald-500/20";
+  if (kind === "withdrawal") return "border-amber-500/20";
   if (kind === "dice") return "border-violet-500/20";
   if (kind === "crash") return "border-sky-500/20";
-  if (kind === "adjustment") return "border-fuchsia-500/20";
   return "border-white/10";
-}
-
-function kindLabel(kind: string, item: any) {
-  if (kind === "adjustment") {
-    const t = String(item?.type || "").toLowerCase();
-    if (t === "manual_credit") return "manual credit";
-    if (t === "manual_debit") return "manual debit";
-    return "adjustment";
-  }
-  if (kind === "transaction_deposit") return "deposit tx";
-  if (kind === "transaction_withdrawal") return "withdrawal tx";
-  return kind || "activity";
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {
@@ -139,7 +115,7 @@ function ActivityCard({ item }: { item: any }) {
     <div className={`rounded-3xl border bg-[#0f1c24] p-5 ${cardCls(kind)}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{kindLabel(kind, item)}</div>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{kind}</div>
           <div className="mt-2 text-xl font-black text-white">{money(getAmount(item))}</div>
           <div className="mt-1 text-xs text-slate-500">{fmtDate(getTs(item))}</div>
         </div>
@@ -155,19 +131,6 @@ function ActivityCard({ item }: { item: any }) {
             ID
             <div className="mt-1 font-black text-white">#{String(item.id)}</div>
           </div>
-        ) : null}
-
-        {(kind === "adjustment" || kind === "transaction" || String(kind).startsWith("transaction_")) ? (
-          <>
-            <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
-              Type
-              <div className="mt-1 font-black text-white">{String(item?.type || "-")}</div>
-            </div>
-            <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
-              Balance After
-              <div className="mt-1 font-black text-white">{money(item?.balance_after)}</div>
-            </div>
-          </>
         ) : null}
 
         {item?.payout_currency ? (
@@ -212,30 +175,19 @@ function ActivityCard({ item }: { item: any }) {
           </div>
         ) : null}
 
-        {!(kind === "adjustment" || kind === "transaction" || String(kind).startsWith("transaction_")) ? (
-          <>
-            <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
-              Payout
-              <div className="mt-1 font-black text-white">{money(getPayout(item))}</div>
-            </div>
+        <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
+          Payout
+          <div className="mt-1 font-black text-white">{money(getPayout(item))}</div>
+        </div>
 
-            <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
-              Profit
-              <div className="mt-1 font-black text-white">{money(getProfit(item))}</div>
-            </div>
-          </>
-        ) : null}
+        <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
+          Profit
+          <div className="mt-1 font-black text-white">{money(getProfit(item))}</div>
+        </div>
       </div>
 
-      {(item?.payout_address || item?.pay_address || item?.note || item?.reference) ? (
+      {(item?.payout_address || item?.pay_address || item?.note) ? (
         <div className="mt-4 grid gap-3">
-          {item?.reference ? (
-            <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
-              Reference
-              <div className="mt-1 font-black text-white">{shortText(item.reference, 60)}</div>
-            </div>
-          ) : null}
-
           {item?.payout_address ? (
             <div className="rounded-2xl bg-[#13232d] px-4 py-3 text-sm text-slate-300">
               Payout Address
@@ -268,7 +220,7 @@ export default function AgentUserActivityPage() {
   const [data, setData] = useState<ActivityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"all" | "deposits" | "withdrawals" | "dice" | "crash" | "transactions" | "adjustments">("all");
+  const [tab, setTab] = useState<"all" | "deposits" | "withdrawals" | "dice" | "crash">("all");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
@@ -303,8 +255,6 @@ export default function AgentUserActivityPage() {
     if (tab === "withdrawals") return data.withdrawals || [];
     if (tab === "dice") return data.dice_bets || [];
     if (tab === "crash") return data.crash_bets || [];
-    if (tab === "transactions") return data.transactions || [];
-    if (tab === "adjustments") return data.adjustments || [];
     return data.all_activity || [];
   }, [data, tab]);
 
@@ -363,14 +313,12 @@ export default function AgentUserActivityPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-6 xl:grid-cols-7">
+      <div className="mb-6 grid gap-4 md:grid-cols-5">
         <StatCard label="Total" value={data?.stats?.total_items ?? 0} />
         <StatCard label="Deposits" value={data?.stats?.deposits ?? 0} />
         <StatCard label="Withdrawals" value={data?.stats?.withdrawals ?? 0} />
         <StatCard label="Dice Bets" value={data?.stats?.dice_bets ?? 0} />
         <StatCard label="Crash Bets" value={data?.stats?.crash_bets ?? 0} />
-        <StatCard label="Transactions" value={data?.stats?.transactions ?? 0} />
-        <StatCard label="Adjustments" value={data?.stats?.adjustments ?? 0} />
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -379,8 +327,6 @@ export default function AgentUserActivityPage() {
         <button className={tabBtn(tab === "withdrawals")} onClick={() => setTab("withdrawals")}>Withdrawals</button>
         <button className={tabBtn(tab === "dice")} onClick={() => setTab("dice")}>Dice Bets</button>
         <button className={tabBtn(tab === "crash")} onClick={() => setTab("crash")}>Crash Bets</button>
-        <button className={tabBtn(tab === "transactions")} onClick={() => setTab("transactions")}>Transactions</button>
-        <button className={tabBtn(tab === "adjustments")} onClick={() => setTab("adjustments")}>Adjustments</button>
       </div>
 
       <div className="mb-6 grid gap-3 md:grid-cols-4">
@@ -388,7 +334,7 @@ export default function AgentUserActivityPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className={inputCls()}
-          placeholder="Search id, address, status, reference..."
+          placeholder="Search id, address, status, note..."
         />
 
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputCls()}>
@@ -402,8 +348,6 @@ export default function AgentUserActivityPage() {
           <option value="finished">Finished</option>
           <option value="win">Win</option>
           <option value="lose">Lose</option>
-          <option value="manual_credit">Manual Credit</option>
-          <option value="manual_debit">Manual Debit</option>
         </select>
 
         <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className={inputCls()}>

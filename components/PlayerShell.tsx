@@ -1,5 +1,7 @@
 "use client";
 
+import FloatingSupport from "@/components/FloatingSupport";
+
 import { useBrandMeta } from "@/lib/useBrandMeta";
 import Image from "next/image";
 import Link from "next/link";
@@ -41,9 +43,9 @@ type WalletSummary = {
 
 const mainNav: NavItem[] = [
   { label: "Home", href: "/" },
-  { label: "Lobby", href: "/casino" },
-  { label: "Crash", href: "/crash", badge: "Hot" },
-  { label: "Dice", href: "/dice" },
+  { label: "Casino", href: "/casino" },
+  { label: "Originals", href: "/casino/originals" },
+  { label: "Promotions", href: "/promotions" },
   { label: "Cashier", href: "/cashier" },
 ];
 
@@ -508,6 +510,7 @@ export default function PlayerShell({
             }}
           >
             {children}
+      <FloatingSupport />
           </div>
         </main>
       </div>

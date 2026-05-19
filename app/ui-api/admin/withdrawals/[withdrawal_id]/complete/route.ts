@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ withdrawal_id: string }> }) {
-  const { withdrawal_id } = await params;
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-  const adminKey = process.env.ADMIN_KEY || "";
-
+export async function POST(req: NextRequest, ctx: { params: Promise<{ withdrawal_id: string }> }) {
   try {
-    const body = await req.text();
-    const res = await fetch(`${base}/admin/withdrawals/${withdrawal_id}/complete`, {
+    const { withdrawal_id } = await ctx.params;
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const adminKey = process.env.ADMIN_KEY || process.env.NEXT_PUBLIC_ADMIN_KEY || "";
+    const body = await req.json().catch(() => ({}));
+
+    const res = await fetch(`${base}/admin/withdrawals/${encodeURIComponent(withdrawal_id)}/complete`, {
       method: "POST",
-      headers: { "X-Admin-Key": adminKey, "Content-Type": "application/json" },
-      body: body || "{}",
+      headers: {
+        "X-Admin-Key": adminKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
     });
 
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch {
-    return NextResponse.json({ detail: "Proxy error" }, { status: 500 });
+    return NextResponse.json({ detail: "Withdrawal action proxy error" }, { status: 500 });
   }
 }

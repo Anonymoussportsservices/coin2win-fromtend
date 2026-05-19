@@ -408,9 +408,12 @@ export default function CashierPage() {
   const user = getStoredUser();
   const [showKycModal, setShowKycModal] = useState(false);
   const [wallet, setWallet] = useState<WalletSummary | null>(null);
-  const [transactions, setTransactions] = useState<TxRow[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyLimit, setHistoryLimit] = useState(100);
   const [latestDeposit, setLatestDeposit] = useState<DepositRow | null>(null);
   const [latestWithdrawal, setLatestWithdrawal] = useState<WithdrawalRow | null>(null);
+  const [depositRows, setDepositRows] = useState<DepositRow[]>([]);
+  const [withdrawalRows, setWithdrawalRows] = useState<WithdrawalRow[]>([]);
   const [datePreset, setDatePreset] = useState<DatePreset>("all");
 
   const [depositAmount, setDepositAmount] = useState("");
@@ -436,21 +439,34 @@ const data = await apiAuth(`/wallet/${encodeURIComponent(user.user_id)}`, "GET")
     }
   }
 
-  async function loadTransactions() {
+  async function loadHistory() {
+    if (!user?.user_id) return;
+
     try {
-const params = new URLSearchParams({ limit: "50" });
-      const { startDate, endDate } = getDateRangeFromPreset(datePreset);
+      const depositsRes = await apiAuth(`/deposit/${encodeURIComponent(user.user_id)}?limit=${historyLimit}`, "GET");
+      const withdrawalsRes = await apiAuth(`/withdraw/${encodeURIComponent(user.user_id)}?limit=${historyLimit}`, "GET");
 
-      if (startDate) params.set("start_date", startDate);
-      if (endDate) params.set("end_date", endDate);
+      const deposits = (depositsRes?.deposits || []).map((d: any) => ({
+        type: "deposit",
+        amount: d.amount_usd,
+        status: d.status,
+        created_at: d.created_at,
+      }));
 
-      const data = await apiAuth(`/transactions/me?${params.toString()}`, "GET");
-      const rows = Array.isArray(data?.transactions) ? data.transactions : [];
-      setTransactions(
-        rows.filter((tx: TxRow) => CASHIER_TYPES.has(String(tx?.type || "")))
+      const withdrawals = (withdrawalsRes?.withdrawals || []).map((w: any) => ({
+        type: "withdrawal",
+        amount: -Math.abs(w.amount_usd || 0),
+        status: w.status,
+        created_at: w.created_at,
+      }));
+
+      const combined = [...deposits, ...withdrawals].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
+
+      setHistory(combined);
     } catch {
-      setTransactions([]);
+      setHistory([]);
     }
   }
 
@@ -460,8 +476,10 @@ const params = new URLSearchParams({ limit: "50" });
     try {
 const data = await apiAuth(`/deposit/${encodeURIComponent(user.user_id)}?limit=10`, "GET");
       const rows = Array.isArray(data?.deposits) ? data.deposits : [];
+      setDepositRows(rows);
       setLatestDeposit(rows.length ? rows[0] : null);
     } catch {
+      setDepositRows([]);
       setLatestDeposit(null);
     }
   }
@@ -472,28 +490,31 @@ const data = await apiAuth(`/deposit/${encodeURIComponent(user.user_id)}?limit=1
     try {
 const data = await apiAuth(`/withdraw/${encodeURIComponent(user.user_id)}?limit=10`, "GET");
       const rows = Array.isArray(data?.withdrawals) ? data.withdrawals : [];
+      setWithdrawalRows(rows);
       setLatestWithdrawal(rows.length ? rows[0] : null);
     } catch {
+      setWithdrawalRows([]);
       setLatestWithdrawal(null);
     }
   }
 
   useEffect(() => {
     loadWallet();
-    loadTransactions();
+    
     loadDeposits();
     loadWithdrawals();
+    loadHistory();
 
     const handleWalletRefresh = () => {
       loadWallet();
-      loadTransactions();
+      
       loadDeposits();
       loadWithdrawals();
     };
 
     const timer = setInterval(() => {
       loadWallet();
-      loadTransactions();
+      
       loadDeposits();
       loadWithdrawals();
     }, 8000);
@@ -506,7 +527,7 @@ const data = await apiAuth(`/withdraw/${encodeURIComponent(user.user_id)}?limit=
       window.removeEventListener("coin2win-auth-changed", handleWalletRefresh);
       window.removeEventListener("coin2win-wallet-changed", handleWalletRefresh);
     };
-  }, [user?.user_id, datePreset]);
+  }, [user?.user_id, datePreset, historyLimit]);
 
   async function handleDeposit() {
     if (!user?.user_id) {
@@ -534,7 +555,8 @@ setDepositLoading(true);
       setDepositResult(data || null);
       setMessage("Deposit invoice created.");
       notifyWalletChanged();
-      await loadTransactions();
+      await loadDeposits();
+      await loadHistory();
     } catch (e: any) {
       setError(e?.message || "Failed to create deposit.");
     } finally {
@@ -585,7 +607,8 @@ setDepositLoading(true);
       setWithdrawAddress("");
       notifyWalletChanged();
       await loadWallet();
-      await loadTransactions();
+      await loadDeposits();
+      await loadHistory();
     } catch (e: any) {
       setError(e?.message || "Failed to request withdrawal.");
     } finally {
@@ -609,6 +632,39 @@ setDepositLoading(true);
       ""
     );
   }, [depositResult]);
+
+  const pendingItems = useMemo(() => {
+    const finalDepositStatuses = new Set(["credited", "finished", "failed", "expired"]);
+    const finalWithdrawalStatuses = new Set(["completed", "rejected", "failed"]);
+
+    const deposits = depositRows
+      .filter((d) => !finalDepositStatuses.has(String(d.status || "").toLowerCase()))
+      .map((d) => ({
+        id: `deposit-${d.id || d.payment_id}`,
+        date: d.created_at,
+        type: "Deposit",
+        amount: d.amount_usd,
+        statusLabel: formatDepositStatus(d.status),
+        statusStyle: depositStatusStyle(d.status),
+        detail: d.payment_id ? `Invoice ${shortValue(d.payment_id, 10, 8)}` : "Pending deposit",
+      }));
+
+    const withdrawals = withdrawalRows
+      .filter((w) => String(w.status || "").toLowerCase() === "requested")
+      .map((w) => ({
+        id: `withdrawal-${w.id}`,
+        date: w.created_at,
+        type: "Withdrawal",
+        amount: w.amount_usd,
+        statusLabel: formatWithdrawalStatus(w.status),
+        statusStyle: withdrawalStatusStyle(w.status),
+        detail: w.id ? `Request #${w.id}` : "Pending withdrawal",
+      }));
+
+    return [...deposits, ...withdrawals]
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+      .slice(0, 6);
+  }, [depositRows, withdrawalRows]);
 
   return (
     <PlayerShell
@@ -811,6 +867,34 @@ setDepositLoading(true);
 
         <div style={card}>
           <div style={cardTitleWrap}>
+            <h3 style={cardTitle}>Pending Transactions</h3>
+          </div>
+
+          {pendingItems.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {pendingItems.map((item) => (
+                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "center", padding: 12, borderRadius: 14, background: "#13202a", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong>{item.type}</strong>
+                      <span style={item.statusStyle}>{item.statusLabel}</span>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "#9fb0bf" }}>{item.detail}</div>
+                    <div style={{ marginTop: 2, fontSize: 11, color: "#64748b" }}>{fmtDate(item.date)}</div>
+                  </div>
+                  <div style={{ fontWeight: 900, color: item.type === "Deposit" ? "#86efac" : "#fca5a5" }}>
+                    {fmtMoney(item.amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={note}>No pending deposits or withdrawals.</div>
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={cardTitleWrap}>
             <h3 style={cardTitle}>Latest Deposit</h3>
             {latestDeposit ? (
               <span style={depositStatusStyle(latestDeposit.status)}>
@@ -922,18 +1006,18 @@ setDepositLoading(true);
         </div>
 
         <div style={historyCard}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}><div><h3 style={cardTitle}>Transaction History</h3><div style={{ marginTop: 6, fontSize: 12, color: "#9fb0bf" }}>Balance After reflects total balance after each transaction. Pending withdrawals may temporarily reduce available balance.</div></div><a href="/account/history" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 40, padding: "0 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#13202a", color: "#fff", fontSize: 13, fontWeight: 800 }}>View Full History</a></div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}><div><h3 style={cardTitle}>Transaction History</h3><div style={{ marginTop: 6, fontSize: 12, color: "#9fb0bf" }}>Deposits and withdrawals only.</div></div></div>
 
-          <div style={table}>
+          <div style={{ ...table, maxHeight: 520, overflowY: "auto" }}>
             <div style={rowHeader}>
               <div>Date</div>
               <div>Type</div>
               <div>Amount</div>
-              <div>Total Balance After</div>
+              <div>Status</div>
             </div>
 
-            {transactions.length ? (
-              transactions.map((tx, idx) => (
+            {history.length ? (
+              history.map((tx, idx) => (
                 <div style={row} key={tx.id ?? `${tx.reference || "tx"}-${idx}`}>
                   <div>{fmtDate(tx.created_at)}</div>
                   <div>
@@ -942,7 +1026,7 @@ setDepositLoading(true);
                   <div style={{ color: Number(tx.amount || 0) >= 0 ? "#86efac" : "#fca5a5", fontWeight: 700 }}>
                     {Number(tx.amount || 0) > 0 ? "+" : ""}{fmtMoney(tx.amount)}
                   </div>
-                  <div>{fmtMoney(tx.balance_after)}</div>
+                  <div>{String(tx.status || '-')}</div>
                 </div>
               ))
             ) : (
@@ -954,6 +1038,15 @@ setDepositLoading(true);
               </div>
             )}
           </div>
+
+          {history.length >= historyLimit ? (
+            <button
+              onClick={() => setHistoryLimit((n) => n + 100)}
+              style={{ ...secondaryBtn, marginTop: 12, width: "100%" }}
+            >
+              Load More
+            </button>
+          ) : null}
         </div>
       </div>
     </PlayerShell>

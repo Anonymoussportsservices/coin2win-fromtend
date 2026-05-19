@@ -49,7 +49,6 @@ export default function RegisterPage() {
           email,
           password,
           referral_code: referralCode || undefined,
-          registered_host: getHostForBrand(),
         }),
       });
 

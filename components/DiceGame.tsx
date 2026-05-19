@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getStoredUser } from "../lib/auth";
-import { API_ENDPOINTS, apiGet, apiPost, notifyWalletChanged } from "../lib/gameApi";
 
 type RollCondition = "under" | "over";
 
@@ -101,7 +100,10 @@ export default function DiceGame() {
       try {
         if (!user?.user_id) return;
 
-        const data = await apiGet(API_ENDPOINTS.diceBets(user.user_id));
+        const res = await fetch(`/api/studio/dice/bets/${user.user_id}`);
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) return;
 
         const mapped = (data?.bets || []).map((b: any) => ({
           id: b.id,
@@ -208,12 +210,25 @@ export default function DiceGame() {
     setError("");
 
     try {
-      const data = await apiPost(API_ENDPOINTS.diceBet, {
-        user_id: user.user_id,
-        amount_usd: Number(bet),
-        target: Number(target),
-        condition,
+      const res = await fetch("/api/studio/dice/bet", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.user_id,
+          amount_usd: Number(bet),
+          target: Number(target),
+          condition,
+        }),
       });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.detail || data?.error || "Roll failed");
+      }
 
       const rollValue = Number(data?.roll ?? 0);
       const payout = Number(data?.payout ?? 0);
@@ -224,7 +239,7 @@ export default function DiceGame() {
       setResult(Number(rollValue.toFixed(2)));
       setWin(didWin);
       setSessionProfit((prev) => round2(prev + profit));
-      notifyWalletChanged();
+      window.dispatchEvent(new Event("coin2win-auth-changed"));
 
       appendRecentBet({
         ...data,
@@ -376,10 +391,10 @@ export default function DiceGame() {
   return (
     <div
       style={{
-        background: "#0f172a",
+        background: "#0f212e",
         border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "16px",
-        padding: isMobile ? "10px" : "14px",
+        borderRadius: "22px",
+        padding: isMobile ? "12px" : "18px",
         display: "grid",
         gap: isMobile ? "10px" : "12px",
         color: "#fff",
@@ -389,13 +404,13 @@ export default function DiceGame() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gridTemplateColumns: isMobile ? "1fr" : "340px minmax(0,1fr)",
           gap: "12px",
         }}
       >
         <div
           style={{
-            background: "#111827",
+            background: "#213743",
             border: "1px solid rgba(255,255,255,0.06)",
             borderRadius: "14px",
             padding: isMobile ? "8px" : "12px",
@@ -406,7 +421,7 @@ export default function DiceGame() {
         >
           <div
             style={{
-              background: "#020617",
+              background: "#0f212e",
               border: "1px solid rgba(255,255,255,0.05)",
               borderRadius: "14px",
               padding: isMobile ? "10px" : "14px",
@@ -440,7 +455,7 @@ export default function DiceGame() {
                 display: "flex",
                 gap: "6px",
                 flexWrap: "wrap",
-                background: "#111827",
+                background: "#213743",
                 border: "1px solid rgba(255,255,255,0.05)",
                 borderRadius: "12px",
                 padding: "6px",
@@ -453,7 +468,7 @@ export default function DiceGame() {
 
             <div
               style={{
-                background: "#111827",
+                background: "#213743",
                 border: "1px solid rgba(255,255,255,0.05)",
                 borderRadius: "12px",
                 padding: "6px",
@@ -483,7 +498,7 @@ export default function DiceGame() {
                     padding: "6px 8px",
                     borderRadius: "10px",
                     border: "1px solid rgba(255,255,255,0.12)",
-                    background: "#020617",
+                    background: "#0f212e",
                     color: "#fff",
                     fontSize: "13px",
                   }}
@@ -519,7 +534,7 @@ export default function DiceGame() {
 
         <div
           style={{
-            background: "#111827",
+            background: "#213743",
             border: "1px solid rgba(255,255,255,0.06)",
             borderRadius: "14px",
             padding: isMobile ? "8px" : "12px",
@@ -530,7 +545,7 @@ export default function DiceGame() {
         >
           <div
             style={{
-              background: "#020617",
+              background: "#0f212e",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.05)",
               padding: "6px",
@@ -568,7 +583,7 @@ export default function DiceGame() {
 
           <div
             style={{
-              background: "#020617",
+              background: "#0f212e",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.05)",
               padding: "6px",
@@ -607,12 +622,13 @@ export default function DiceGame() {
               style={{
                 width: "100%",
                 padding: "10px",
-                background: "#22c55e",
+                background: "#00e701",
                 border: "none",
                 borderRadius: "12px",
                 fontWeight: 700,
                 fontSize: "14px",
-                color: "#fff",
+                color: "#071824",
+                boxShadow: "0 8px 0 #009b00",
                 cursor: !canRoll || rolling || autoRolling ? "not-allowed" : "pointer",
                 opacity: !canRoll || rolling || autoRolling ? 0.7 : 1,
               }}
@@ -623,7 +639,7 @@ export default function DiceGame() {
 
           <div
             style={{
-              background: "#020617",
+              background: "#0f212e",
               borderRadius: "12px",
               border: "1px solid rgba(255,255,255,0.05)",
               padding: "6px",
@@ -870,35 +886,6 @@ export default function DiceGame() {
 
       <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-white">Session Profit Chart</h3>
-          <span className="text-xs text-white/50">Last {Math.min(recentBets.length, 20)} bets</span>
-        </div>
-
-        {recentBets.length === 0 ? (
-          <div className="text-sm text-white/50">No chart data yet.</div>
-        ) : (
-          <div className="rounded-lg bg-black/20 p-3">
-            <svg viewBox="0 0 100 100" className="h-32 w-full">
-              <path
-                d={profitChartPath}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="text-green-400"
-                vectorEffect="non-scaling-stroke"
-              />
-            </svg>
-            <div className="mt-2 flex items-center justify-between text-xs text-white/45">
-              <span>Start</span>
-              <span>Current P/L: {sessionProfit > 0 ? "+" : ""}${formatNum(sessionProfit)}</span>
-              <span>Now</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
-        <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">Recent Bets</h3>
           <span className="text-xs text-white/50">{visibleRecentBets.length}/{recentBets.length} shown</span>
         </div>
@@ -1066,7 +1053,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       style={{
         flex: "1 1 92px",
         minWidth: "92px",
-        background: "#020617",
+        background: "#0f212e",
         border: "1px solid rgba(255,255,255,0.05)",
         borderRadius: "10px",
         padding: "8px 10px",
@@ -1082,7 +1069,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const smallButtonStyle: React.CSSProperties = {
   padding: "8px 12px",
-  background: "#1e293b",
+  background: "#2f4553",
   border: "none",
   borderRadius: "8px",
   color: "#fff",
