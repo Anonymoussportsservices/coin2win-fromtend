@@ -22,8 +22,10 @@ type KycDetail = {
   kyc_rejected_reason?: string | null;
   kyc_approved_by?: string | null;
   files?: {
-    id_document?: string | null;
+    front?: string | null;
+    back?: string | null;
     selfie?: string | null;
+    id_document?: string | null;
     proof_of_address?: string | null;
   };
   history?: Array<{
@@ -75,6 +77,12 @@ function smallCard(label: string, value: string) {
   );
 }
 
+function kycFileUrl(url?: string | null, viewerId?: string) {
+  const base = String(url || "").replace("/api/admin/kyc/file/", "/ui-api/admin/kyc/file/");
+  if (!base) return "";
+  return viewerId ? `${base}?viewer_id=${encodeURIComponent(viewerId)}` : base;
+}
+
 function actionLabel(action?: string) {
   const map: Record<string, string> = {
     upload_level1: "Uploaded Level 1",
@@ -98,6 +106,44 @@ export default function AgentKycPage() {
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [overrideLevel, setOverrideLevel] = useState("2");
+  const [overridePerWd, setOverridePerWd] = useState("");
+  const [overrideDaily, setOverrideDaily] = useState("");
+  const [overrideWeekly, setOverrideWeekly] = useState("");
+  const [overrideMonthly, setOverrideMonthly] = useState("");
+  const [overrideMinWd, setOverrideMinWd] = useState("");
+  const [overrideManualReviewOver, setOverrideManualReviewOver] = useState("");
+  const [overrideAutoWd, setOverrideAutoWd] = useState(true);
+  const [overrideCooldown, setOverrideCooldown] = useState("");
+  const [overrideDebug, setOverrideDebug] = useState("");
+
+  async function prefillOverrideLimits(userId: string) {
+    try {
+      const res = await fetch(
+        `/ui-api/kyc/me?user_id=${encodeURIComponent(userId)}&_=${Date.now()}`,
+        { cache: "no-store" }
+      );
+
+      const json = await res.json().catch(() => ({}));
+      const lim = json?.limits || {};
+      setOverrideDebug(
+        `Loaded ${userId}: source=${lim?.source || "-"} owner=${lim?.owner_id || "-"} per=${lim?.per_withdrawal_limit ?? "-"} daily=${lim?.daily_limit ?? "-"} weekly=${lim?.weekly_limit ?? "-"} monthly=${lim?.monthly_limit ?? "-"}`
+      );
+
+      setOverrideLevel(String(json?.kyc_level || lim?.level || 2));
+      setOverrideMinWd(String(lim?.min_withdrawal ?? 20));
+      setOverridePerWd(String(lim?.per_withdrawal_limit ?? 0));
+      setOverrideDaily(String(lim?.daily_limit ?? 0));
+      setOverrideWeekly(String(lim?.weekly_limit ?? 0));
+      setOverrideMonthly(String(lim?.monthly_limit ?? 0));
+      setOverrideManualReviewOver(String(lim?.requires_manual_review_over ?? 0));
+      setOverrideAutoWd(Boolean(lim?.auto_withdraw_enabled ?? true));
+      setOverrideCooldown(String(lim?.cooldown_minutes ?? 0));
+    } catch (e: any) {
+      setOverrideDebug(e?.message || "Could not load effective KYC limits");
+      setMessage(e?.message || "Could not load effective KYC limits");
+    }
+  }
 
   async function loadDetail(userId: string) {
     if (!userId) {
@@ -114,6 +160,8 @@ export default function AgentKycPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.detail || "Failed to load KYC detail");
       setDetail(json);
+
+      await prefillOverrideLimits(userId);
     } catch (e: any) {
       setMessage(e?.message || "Failed to load KYC detail");
       setDetail(null);
@@ -189,6 +237,66 @@ export default function AgentKycPage() {
     }
   }
 
+  async function savePlayerOverride(userId: string) {
+    if (!userId) return;
+
+    try {
+      setBusyId(userId);
+      setMessage("");
+
+      const minWd = Number(overrideMinWd || 0);
+      const perWd = Number(overridePerWd || 0);
+      const daily = Number(overrideDaily || 0);
+      const weekly = Number(overrideWeekly || 0);
+      const monthly = Number(overrideMonthly || 0);
+      const manualOver = Number(overrideManualReviewOver || 0);
+
+      if (perWd > 0 && minWd > perWd) {
+        throw new Error("Minimum WD cannot be greater than Per WD.");
+      }
+      if (perWd > 0 && daily > 0 && perWd > daily) {
+        throw new Error("Daily limit cannot be lower than Per WD.");
+      }
+      if (daily > 0 && weekly > 0 && daily > weekly) {
+        throw new Error("Weekly limit cannot be lower than Daily limit.");
+      }
+      if (weekly > 0 && monthly > 0 && weekly > monthly) {
+        throw new Error("Monthly limit cannot be lower than Weekly limit.");
+      }
+      if (manualOver > 0 && perWd > 0 && manualOver > perWd) {
+        throw new Error("Manual Review Over cannot be greater than Per WD.");
+      }
+
+      const res = await fetch("/ui-api/admin/kyc/player-override", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          viewer_id: viewerId,
+          user_id: userId,
+          level: Number(overrideLevel || 2),
+          min_withdrawal: minWd,
+          per_withdrawal_limit: perWd,
+          daily_limit: daily,
+          weekly_limit: weekly,
+          monthly_limit: monthly,
+          requires_manual_review_over: manualOver,
+          auto_withdraw_enabled: overrideAutoWd,
+          cooldown_minutes: Number(overrideCooldown || 0),
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof json?.detail === "string" ? json.detail : "Failed to save VIP override");
+
+      setMessage(`VIP override saved for ${userId} ✅`);
+      await loadUsers(userId);
+    } catch (e: any) {
+      setMessage(e?.message || "Failed to save VIP override");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function reject(userId: string) {
     const reason = window.prompt("Reject reason:", "Document mismatch")?.trim();
     if (!reason) return;
@@ -254,7 +362,7 @@ export default function AgentKycPage() {
             </div>
             <h1 className="mt-2 text-3xl font-black">Agent KYC Review Queue</h1>
             <p className="mt-2 text-sm text-slate-300">
-              Review submissions, approve levels, reject documents, and inspect audit history.
+              Review submissions, approve levels, reject documents, and inspect history.
             </p>
           </div>
 
@@ -343,7 +451,7 @@ export default function AgentKycPage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                  Selected User
+                  KYC Review
                 </div>
                 <h2 className="mt-2 text-2xl font-black">{selectedId || "-"}</h2>
               </div>
@@ -409,87 +517,232 @@ export default function AgentKycPage() {
                     Reject
                   </button>
                 </div>
+                {viewerId === "supercoin" ? (
+                <div key={`vip-${selectedId}`} className="mt-5 rounded-3xl border border-sky-500/10 bg-[#10202a] p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-black text-white">VIP Withdrawal Override</h3>
+                      <div className="mt-1 text-xs text-slate-400">
+                        Supercoin only. Overrides inherited KYC limits for this player. Use 0 on max limits for unlimited.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectedId && prefillOverrideLimits(selectedId)}
+                      className="rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs font-black text-sky-300"
+                    >
+                      Reload Effective Limits
+                    </button>
+                  </div>
+
+                  {overrideDebug ? (
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-[#0f172a] px-4 py-3 text-xs font-bold text-slate-300">
+                      {overrideDebug}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Level</div>
+                      <select
+                        value={overrideLevel}
+                        onChange={(e) => setOverrideLevel(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none"
+                      >
+                        <option value="1">L1</option>
+                        <option value="2">L2</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Minimum WD</div>
+                      <input value={overrideMinWd} onChange={(e) => setOverrideMinWd(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Per WD</div>
+                      <input value={overridePerWd} onChange={(e) => setOverridePerWd(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Daily</div>
+                      <input value={overrideDaily} onChange={(e) => setOverrideDaily(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Weekly</div>
+                      <input value={overrideWeekly} onChange={(e) => setOverrideWeekly(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Monthly</div>
+                      <input value={overrideMonthly} onChange={(e) => setOverrideMonthly(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Manual Review Over</div>
+                      <input value={overrideManualReviewOver} onChange={(e) => setOverrideManualReviewOver(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Cooldown Minutes</div>
+                      <input value={overrideCooldown} onChange={(e) => setOverrideCooldown(e.target.value)} type="number" min="0" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2 font-black text-white outline-none" />
+                    </div>
+
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0f172a] px-3 py-2">
+                      <span>
+                        <span className="block text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Auto WD</span>
+                        <span className="block text-xs text-slate-500">Allow withdrawal requests</span>
+                      </span>
+                      <input type="checkbox" checked={overrideAutoWd} onChange={(e) => setOverrideAutoWd(e.target.checked)} className="h-5 w-5" />
+                    </label>
+                  </div>
+
+                  <button
+                    disabled={selectedBusy || viewerId !== "supercoin"}
+                    onClick={() => selectedId && savePlayerOverride(selectedId)}
+                    className="mt-4 w-full rounded-2xl bg-sky-500 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {viewerId !== "supercoin" ? "Supercoin Only" : selectedBusy ? "Saving..." : "Save VIP Override"}
+                  </button>
+                </div>
+                ) : null}
               </>
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="grid grid-cols-1 gap-6">
             <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
-              <h3 className="text-xl font-black">Documents</h3>
-              <div className="mt-4 grid gap-3">
-                {detail?.files?.id_document ? (
-                  <a
-                    href={detail.files.id_document}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm font-black text-sky-300"
-                  >
-                    View ID Document
-                  </a>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm text-slate-400">
-                    No ID document
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black">Documents</h3>
+                  <div className="mt-1 text-xs text-slate-400">
+                    Submitted player KYC photos. Open any image for full-size review.
                   </div>
-                )}
+                </div>
+              </div>
 
-                {detail?.files?.selfie ? (
-                  <a
-                    href={detail.files.selfie}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm font-black text-sky-300"
-                  >
-                    View Selfie
-                  </a>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm text-slate-400">
-                    No selfie
-                  </div>
-                )}
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                {[
+                  { label: "ID Front", url: detail?.files?.front || detail?.files?.id_document },
+                  { label: "ID Back", url: detail?.files?.back },
+                  { label: "Selfie", url: detail?.files?.selfie },
+                ].map((doc) => {
+                  const url = kycFileUrl(doc.url, viewerId);
 
-                {detail?.files?.proof_of_address ? (
-                  <a
-                    href={detail.files.proof_of_address}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm font-black text-sky-300"
-                  >
-                    View Proof of Address
-                  </a>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm text-slate-400">
-                    No proof of address
-                  </div>
-                )}
+                  return (
+                    <div key={doc.label} className="rounded-2xl border border-white/10 bg-[#13232d] p-3">
+                      <div className="mb-3 text-sm font-black text-white">{doc.label}</div>
+
+                      {url ? (
+                        <>
+                          <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-white/10 bg-[#0f172a]">
+                            <img
+                              src={url}
+                              alt={doc.label}
+                              className="aspect-[4/3] w-full object-cover"
+                            />
+                          </a>
+
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-3 block rounded-xl bg-sky-500/15 px-3 py-2 text-center text-xs font-black text-sky-300"
+                          >
+                            Open Full Size
+                          </a>
+                        </>
+                      ) : (
+                        <div className="flex aspect-[4/3] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-[#0f172a] text-sm text-slate-500">
+                          Not submitted
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <div className="rounded-3xl border border-white/5 bg-[#1a2c38] p-5">
-              <h3 className="text-xl font-black">Audit Log</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black">History</h3>
+                  <div className="mt-1 text-xs text-slate-400">
+                    KYC audit trail: actor, timestamp, IP, device, and before/after values.
+                  </div>
+                </div>
+                <div className="rounded-full border border-white/10 bg-[#13232d] px-3 py-1 text-xs font-black text-slate-300">
+                  {(detail?.history || []).length} event{(detail?.history || []).length === 1 ? "" : "s"}
+                </div>
+              </div>
+
               <div className="mt-4 grid gap-3">
                 {(detail?.history || []).length ? (
-                  (detail?.history || []).map((row) => (
-                    <div
-                      key={row.id}
-                      className="rounded-2xl border border-white/5 bg-[#13232d] p-4"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-black text-white">
-                          {actionLabel(row.action)}
+                  (detail?.history || []).map((row: any) => {
+                    const before = row.payload_before || {};
+                    const after = row.payload_after || {};
+                    const ua = String(row.user_agent || "-");
+                    const shortUa = ua.length > 84 ? `${ua.slice(0, 84)}...` : ua;
+
+                    return (
+                      <div
+                        key={row.id}
+                        className="rounded-2xl border border-white/5 bg-[#13232d] p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-black text-white">
+                              {actionLabel(row.action)}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-400">
+                              {fmtDate(row.created_at)}
+                            </div>
+                          </div>
+
+                          <div className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-300">
+                            {row.actor || "-"}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-400">
-                          {fmtDate(row.created_at)}
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-xl border border-white/5 bg-[#0f172a] p-3 text-xs text-slate-300">
+                            <div className="font-black uppercase tracking-[0.14em] text-slate-500">Security</div>
+                            <div className="mt-2">IP: <span className="font-bold text-white">{row.ip_address || "-"}</span></div>
+                            <div className="mt-1 break-words">Device: <span className="font-bold text-white">{shortUa}</span></div>
+                            <div className="mt-1">Path: <span className="font-bold text-white">{row.request_path || "-"}</span></div>
+                          </div>
+
+                          <div className="rounded-xl border border-white/5 bg-[#0f172a] p-3 text-xs text-slate-300">
+                            <div className="font-black uppercase tracking-[0.14em] text-slate-500">KYC Change</div>
+                            <div className="mt-2">
+                              Status: <span className="font-bold text-slate-400">{before.kyc_status ?? "-"}</span>
+                              {" → "}
+                              <span className="font-bold text-white">{after.kyc_status ?? "-"}</span>
+                            </div>
+                            <div className="mt-1">
+                              Level: <span className="font-bold text-slate-400">{before.kyc_level ?? "-"}</span>
+                              {" → "}
+                              <span className="font-bold text-white">{after.kyc_level ?? "-"}</span>
+                            </div>
+                            <div className="mt-1">
+                              Limit: <span className="font-bold text-slate-400">${Number(before.auto_withdraw_limit || 0).toFixed(2)}</span>
+                              {" → "}
+                              <span className="font-bold text-white">${Number(after.auto_withdraw_limit || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
                         </div>
+
+                        {row.note ? (
+                          <div className="mt-3 rounded-xl border border-white/5 bg-[#0f172a] px-3 py-2 text-sm text-slate-300">
+                            Note: <span className="font-bold text-white">{row.note}</span>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="mt-2 text-xs text-slate-300">
-                        Actor: {row.actor || "-"} · From: {row.from_level ?? "-"} ·
-                        To: {row.to_level ?? "-"}
-                      </div>
-                      <div className="mt-2 text-sm text-slate-300">
-                        {row.note || "-"}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="rounded-2xl border border-white/10 bg-[#13232d] px-4 py-3 text-sm text-slate-400">
                     No KYC history yet.

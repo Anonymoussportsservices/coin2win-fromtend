@@ -11,6 +11,7 @@ type WithdrawalLight = {
   amount_usd: number;
   status: string;
   created_at?: string | null;
+  note?: string | null;
 };
 
 type WithdrawalDetail = {
@@ -89,6 +90,14 @@ function fmtDate(value?: string | null) {
   });
 }
 
+function isManualReview(note?: string | null) {
+  return String(note || "").toLowerCase().includes("manual review");
+}
+
+function manualReviewBadge() {
+  return "inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-black text-amber-300";
+}
+
 function statusChip(status?: string) {
   const s = String(status || "").toLowerCase();
   const base = "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black border";
@@ -147,11 +156,26 @@ export default function AgentWithdrawalsPage() {
       setLoading(true);
       setMessage("");
 
-      const session = JSON.parse(localStorage.getItem("agent_session_data") || "{}");
+      const session = JSON.parse(
+        localStorage.getItem("agent_session_data") || "{}"
+      );
+
+      const urlViewerId =
+        new URLSearchParams(window.location.search).get("viewer_id") || "";
+
       const currentViewerId =
+        urlViewerId ||
         localStorage.getItem("agent_viewer_id") ||
         session?.id ||
-        "supercoin";
+        "";
+
+      if (!currentViewerId) {
+        throw new Error("Missing agent viewer context");
+      }
+
+      if (urlViewerId) {
+        localStorage.setItem("agent_viewer_id", urlViewerId);
+      }
 
       const [metricsJson, requestedJson, approvedJson, sentJson, failedJson, allJson] =
         await Promise.all([
@@ -185,7 +209,24 @@ export default function AgentWithdrawalsPage() {
   async function openDetail(id: number) {
     try {
       setDetailLoading(true);
-      const json = await fetchJson(`/ui-api/admin/withdrawals/${id}`);
+
+      const session = JSON.parse(
+        localStorage.getItem("agent_session_data") || "{}"
+      );
+
+      const currentViewerId =
+        localStorage.getItem("agent_viewer_id") ||
+        session?.id ||
+        "";
+
+      if (!currentViewerId) {
+        throw new Error("Missing agent viewer context");
+      }
+
+      const json = await fetchJson(
+        `/ui-api/admin/withdrawals/${id}?viewer_id=${encodeURIComponent(currentViewerId)}`
+      );
+
       setDetail(json);
     } catch (e: any) {
       setMessage(e?.message || "Failed to load withdrawal detail");
@@ -218,11 +259,33 @@ export default function AgentWithdrawalsPage() {
         body = note ? { note } : {};
       }
 
-      const json = await fetchJson(`/ui-api/admin/withdrawals/${id}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const session = JSON.parse(
+        localStorage.getItem("agent_session_data") || "{}"
+      );
+
+      const urlViewerId =
+        new URLSearchParams(window.location.search).get("viewer_id") || "";
+
+      const currentViewerId =
+        urlViewerId ||
+        localStorage.getItem("agent_viewer_id") ||
+        session?.id ||
+        "";
+
+      if (!currentViewerId) {
+        throw new Error("Missing agent viewer context");
+      }
+
+      const json = await fetchJson(
+        `/ui-api/admin/withdrawals/${id}/${action}?viewer_id=${encodeURIComponent(currentViewerId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      );
 
       setMessage(`Withdrawal #${id} → ${json?.status || action} ✅`);
       await loadAll();
@@ -354,6 +417,7 @@ export default function AgentWithdrawalsPage() {
               activeItems.map((row: any) => {
                 const status = String(row.status || "").toLowerCase();
                 const isBusy = busyId === row.id;
+                const manualReview = isManualReview(row.note);
 
                 return (
                   <div key={row.id} className="rounded-2xl border border-white/5 bg-[#13202a] p-4">
@@ -366,12 +430,18 @@ export default function AgentWithdrawalsPage() {
                           Withdrawal #{row.id}
                         </button>
                         <span className={statusChip(status)}>{status || "unknown"}</span>
+                        {manualReview ? <span className={manualReviewBadge()}>Manual Review Required</span> : null}
                       </div>
 
                       <div className="grid gap-1 text-sm text-slate-300">
                         <div>User: <span className="font-black text-white">{row.user_id || "-"}</span></div>
                         <div>Amount: <span className="font-black text-white">{money(row.amount_usd)}</span></div>
                         <div className="text-xs text-slate-400">Created: {fmtDate(row.created_at)}</div>
+                        {manualReview ? (
+                          <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">
+                            {row.note || "Manual review required"}
+                          </div>
+                        ) : null}
                       </div>
 
                       {status === "approved" ? (
@@ -497,7 +567,14 @@ export default function AgentWithdrawalsPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="font-black text-white">Withdrawal #{detail.id}</div>
                   <span className={statusChip(detail.status)}>{detail.status}</span>
+                  {isManualReview(detail.note) ? <span className={manualReviewBadge()}>Manual Review Required</span> : null}
                 </div>
+                {isManualReview(detail.note) ? (
+                  <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-200">
+                    This withdrawal was flagged by KYC withdrawal rules and should be reviewed carefully before approval.
+                  </div>
+                ) : null}
+
                 <div className="mt-3 grid gap-2">
                   <div>User: <span className="font-black text-white">{detail.user_id}</span></div>
                   <div>Amount: <span className="font-black text-white">{money(detail.amount_usd)}</span></div>

@@ -47,6 +47,34 @@ type WithdrawalRow = {
   updated_at?: string;
 };
 
+type KycMeResponse = {
+  ok?: boolean;
+  user_id?: string;
+  kyc_status?: string;
+  kyc_level?: number;
+  limits?: {
+    source?: string;
+    owner_id?: string;
+    per_withdrawal_limit?: number;
+    daily_limit?: number;
+    weekly_limit?: number;
+    monthly_limit?: number;
+    is_override?: boolean;
+  };
+  usage?: {
+    daily_used?: number;
+    weekly_used?: number;
+    monthly_used?: number;
+  };
+  remaining?: {
+    daily_remaining?: number | null;
+    weekly_remaining?: number | null;
+    monthly_remaining?: number | null;
+  };
+};
+
+const MIN_WITHDRAW_USD_DISPLAY = 20;
+
 const CASHIER_TYPES = new Set([
   "deposit",
   "withdrawal_request",
@@ -182,6 +210,15 @@ function depositStatusStyle(status?: string): CSSProperties {
     color: "#fcd34d",
     border: "1px solid rgba(245,158,11,0.22)",
   };
+}
+
+function formatKycSource(source?: string) {
+  const s = String(source || "");
+  if (s === "player_override") return "VIP Override";
+  if (s === "inherited_rule") return "Agent Rule";
+  if (s === "global_default") return "Global Default";
+  if (s === "legacy_constant") return "Legacy Default";
+  return "Default";
 }
 
 function shortValue(value?: string | null, left: number = 10, right: number = 8) {
@@ -425,6 +462,7 @@ export default function CashierPage() {
   const [withdrawCurrency, setWithdrawCurrency] = useState("btc");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const [kycInfo, setKycInfo] = useState<KycMeResponse | null>(null);
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -498,18 +536,31 @@ const data = await apiAuth(`/withdraw/${encodeURIComponent(user.user_id)}?limit=
     }
   }
 
+  async function loadKycInfo() {
+    if (!user?.user_id) return;
+    try {
+      const data = await apiAuth(`/kyc/me?user_id=${encodeURIComponent(user.user_id)}`, "GET");
+      setKycInfo(data || null);
+    } catch {
+      setKycInfo(null);
+    }
+  }
+
   useEffect(() => {
     loadWallet();
     
     loadDeposits();
     loadWithdrawals();
     loadHistory();
+    loadKycInfo();
 
     const handleWalletRefresh = () => {
       loadWallet();
       
       loadDeposits();
       loadWithdrawals();
+      loadKycInfo();
+      loadKycInfo();
     };
 
     const timer = setInterval(() => {
@@ -581,6 +632,7 @@ setDepositLoading(true);
         `/kyc/me?user_id=${encodeURIComponent(userId)}`,
         "GET"
       );
+      setKycInfo(kyc || null);
 
       if (kyc?.kyc_status !== "verified") {
         setShowKycModal(true);
@@ -608,7 +660,9 @@ setDepositLoading(true);
       notifyWalletChanged();
       await loadWallet();
       await loadDeposits();
+      await loadWithdrawals();
       await loadHistory();
+      await loadKycInfo();
     } catch (e: any) {
       setError(e?.message || "Failed to request withdrawal.");
     } finally {
@@ -763,8 +817,8 @@ setDepositLoading(true);
           />
         </div>
 
-        <div style={grid}>
-          <div style={card}>
+        <div style={cashierTopGrid}>
+          <div style={balanceCard}>
             <h3 style={cardTitle}>Balance</h3>
 
             <div style={balanceBox}>
@@ -784,7 +838,9 @@ setDepositLoading(true);
               </div>
             </div>
           </div>
+        </div>
 
+        <div style={cashierActionGrid}>
           <div style={card}>
             <h3 style={cardTitle}>Deposit</h3>
 
@@ -828,6 +884,154 @@ setDepositLoading(true);
 
           <div style={card}>
             <h3 style={cardTitle}>Withdraw</h3>
+
+            <div
+              style={{
+                marginBottom: 12,
+                border: "1px solid rgba(59,130,246,0.18)",
+                background: "linear-gradient(180deg, rgba(30,41,59,0.96) 0%, rgba(15,23,42,0.92) 100%)",
+                borderRadius: 18,
+                padding: 16,
+                boxShadow: "0 10px 30px rgba(0,0,0,0.24)",
+              }}
+            >
+              {kycInfo?.kyc_status === "verified" ? (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 900,
+                          letterSpacing: "0.16em",
+                          color: "#93c5fd",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Verified Level {Number(kycInfo?.kyc_level || 0)}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "grid",
+                          gap: 6,
+                          fontSize: 13,
+                          color: "#dbeafe",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <div>✔ Higher withdrawal access</div>
+                        <div>✔ Faster payout reviews</div>
+                        <div>✔ Enhanced account security</div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        alignSelf: "flex-start",
+                        borderRadius: 999,
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        fontWeight: 900,
+                        color: "#bfdbfe",
+                        background: "rgba(59,130,246,0.14)",
+                        border: "1px solid rgba(59,130,246,0.22)",
+                      }}
+                    >
+                      {formatKycSource(kycInfo?.limits?.source)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 16,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                      gap: 10,
+                      alignItems: "stretch",
+                    }}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        padding: 12,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>
+                        Per withdrawal
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 20, fontWeight: 900, color: "#ffffff" }}>
+                        {fmtMoney(kycInfo?.limits?.per_withdrawal_limit)}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        padding: 12,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.05)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 800, textTransform: "uppercase" }}>
+                        Remaining today
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 20, fontWeight: 900, color: "#ffffff" }}>
+                        {fmtMoney(kycInfo?.remaining?.daily_remaining ?? kycInfo?.limits?.daily_limit)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      fontSize: 11,
+                      color: "#94a3b8",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Withdrawal access thresholds are separate from your wallet balance.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: "#ffffff" }}>
+                    Verify your identity
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      color: "#b6c2cf",
+                    }}
+                  >
+                    Complete account verification to unlock withdrawals and higher payout access.
+                  </div>
+
+                  <button
+                    onClick={() => (window.location.href = "/kyc")}
+                    style={{
+                      marginTop: 14,
+                      width: "100%",
+                      border: "none",
+                      borderRadius: 12,
+                      minHeight: 42,
+                      background: "#3b82f6",
+                      color: "#ffffff",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Complete Verification
+                  </button>
+                </>
+              )}
+            </div>
 
             <input
               placeholder="Amount (USD)"
@@ -1067,6 +1271,28 @@ const grid: CSSProperties = {
   gap: 20,
 };
 
+const cashierTopGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 20,
+};
+
+const cashierActionGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+  gap: 20,
+  alignItems: "start",
+};
+
+const balanceCard: CSSProperties = {
+  background: "#1a2c38",
+  padding: 18,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.05)",
+  display: "grid",
+  gap: 14,
+};
+
 const card: CSSProperties = {
   background: "#1a2c38",
   padding: 24,
@@ -1140,10 +1366,10 @@ const depositStatusMono: CSSProperties = {
 
 const balanceBox: CSSProperties = {
   background: "#13202a",
-  padding: 18,
+  padding: 14,
   borderRadius: 12,
   display: "grid",
-  gap: 6,
+  gap: 4,
 };
 
 const balanceLabel: CSSProperties = {
@@ -1152,7 +1378,7 @@ const balanceLabel: CSSProperties = {
 };
 
 const balanceValue: CSSProperties = {
-  fontSize: 28,
+  fontSize: 24,
   fontWeight: 800,
   color: "#00e701",
 };

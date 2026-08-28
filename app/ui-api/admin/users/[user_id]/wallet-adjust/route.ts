@@ -11,7 +11,17 @@ export async function POST(
   try {
     const body = await req.json();
 
-    const res = await fetch(`${base}/admin/users/${encodeURIComponent(user_id)}/wallet-adjust`, {
+    const viewerId = req.nextUrl.searchParams.get("viewer_id") || "";
+
+    const targetUrl = new URL(
+      `${base}/admin/users/${encodeURIComponent(user_id)}/wallet-adjust`
+    );
+
+    if (viewerId) {
+      targetUrl.searchParams.set("viewer_id", viewerId);
+    }
+
+    const res = await fetch(targetUrl.toString(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

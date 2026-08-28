@@ -11,3 +11,7 @@ __pycache__/
 *.bak*
 *.backup*
 *.off
+
+tsconfig.tsbuildinfo
+
+public/uploads/

@@ -1,17 +1,81 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ withdrawal_id: string }> }) {
+export async function GET(
+  req: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{
+      withdrawal_id: string;
+    }>;
+  }
+) {
+  const { withdrawal_id } = await params;
+
+  const base =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://127.0.0.1:8000";
+
+  const adminKey = process.env.ADMIN_KEY || "";
+  const agentToken =
+    req.cookies.get("agent_token")?.value || "";
+
+  if (!agentToken) {
+    return NextResponse.json(
+      { detail: "Missing agent session" },
+      { status: 401 }
+    );
+  }
+
   try {
-    const { withdrawal_id } = await ctx.params;
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-    const adminKey = process.env.ADMIN_KEY || process.env.NEXT_PUBLIC_ADMIN_KEY || "";
-    const res = await fetch(`${base}/admin/withdrawals/${encodeURIComponent(withdrawal_id)}`, {
+    const qs = req.nextUrl.searchParams.toString();
+
+    const targetUrl =
+      `${base}/admin/withdrawals/` +
+      encodeURIComponent(withdrawal_id) +
+      (qs ? `?${qs}` : "");
+
+    const res = await fetch(targetUrl, {
       cache: "no-store",
-      headers: { "X-Admin-Key": adminKey, Accept: "application/json" },
+      headers: {
+        "X-Admin-Key": adminKey,
+        Authorization: `Bearer ${agentToken}`,
+        Accept: "application/json",
+      },
     });
-    const data = await res.json().catch(() => ({}));
-    return NextResponse.json(data, { status: res.status });
-  } catch {
-    return NextResponse.json({ detail: "Withdrawal detail proxy error" }, { status: 500 });
+
+    const raw = await res.text();
+
+    let data: any = {};
+
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      data = {
+        detail:
+          raw ||
+          `Withdrawal detail failed (${res.status})`,
+      };
+    }
+
+    const out = NextResponse.json(data, {
+      status: res.status,
+    });
+
+    if (res.status === 401) {
+      out.cookies.delete("agent_token");
+      out.cookies.delete("agent_session");
+    }
+
+    return out;
+  } catch (err: any) {
+    return NextResponse.json(
+      {
+        detail:
+          err?.message ||
+          "Withdrawal detail proxy failed",
+      },
+      { status: 500 }
+    );
   }
 }

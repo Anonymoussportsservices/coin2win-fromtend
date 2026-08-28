@@ -11,7 +11,17 @@ export async function POST(
     const body = await req.text();
     const adminKey = req.headers.get("x-admin-key") || process.env.ADMIN_KEY || "";
 
-    const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(user_id)}/reset-password`, {
+    const viewerId = req.nextUrl.searchParams.get("viewer_id") || "";
+
+    const targetUrl = new URL(
+      `${API_BASE}/admin/users/${encodeURIComponent(user_id)}/reset-password`
+    );
+
+    if (viewerId) {
+      targetUrl.searchParams.set("viewer_id", viewerId);
+    }
+
+    const res = await fetch(targetUrl.toString(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

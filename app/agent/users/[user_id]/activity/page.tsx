@@ -12,12 +12,15 @@ type ActivityResponse = {
     withdrawals: number;
     dice_bets: number;
     crash_bets: number;
+    transactions?: number;
+    adjustments?: number;
     total_items: number;
   };
   deposits: any[];
   withdrawals: any[];
   dice_bets: any[];
   crash_bets: any[];
+  transactions: any[];
   all_activity: any[];
   detail?: string;
 };
@@ -220,7 +223,7 @@ export default function AgentUserActivityPage() {
   const [data, setData] = useState<ActivityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"all" | "deposits" | "withdrawals" | "dice" | "crash">("all");
+  const [tab, setTab] = useState<"all" | "deposits" | "withdrawals" | "transactions">("all");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
@@ -253,8 +256,7 @@ export default function AgentUserActivityPage() {
     if (!data) return [];
     if (tab === "deposits") return data.deposits || [];
     if (tab === "withdrawals") return data.withdrawals || [];
-    if (tab === "dice") return data.dice_bets || [];
-    if (tab === "crash") return data.crash_bets || [];
+    if (tab === "transactions") return data.transactions || [];
     return data.all_activity || [];
   }, [data, tab]);
 
@@ -313,20 +315,18 @@ export default function AgentUserActivityPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid gap-4 md:grid-cols-5">
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
         <StatCard label="Total" value={data?.stats?.total_items ?? 0} />
         <StatCard label="Deposits" value={data?.stats?.deposits ?? 0} />
         <StatCard label="Withdrawals" value={data?.stats?.withdrawals ?? 0} />
-        <StatCard label="Dice Bets" value={data?.stats?.dice_bets ?? 0} />
-        <StatCard label="Crash Bets" value={data?.stats?.crash_bets ?? 0} />
+        <StatCard label="Transactions" value={data?.stats?.transactions ?? 0} />
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         <button className={tabBtn(tab === "all")} onClick={() => setTab("all")}>All</button>
         <button className={tabBtn(tab === "deposits")} onClick={() => setTab("deposits")}>Deposits</button>
         <button className={tabBtn(tab === "withdrawals")} onClick={() => setTab("withdrawals")}>Withdrawals</button>
-        <button className={tabBtn(tab === "dice")} onClick={() => setTab("dice")}>Dice Bets</button>
-        <button className={tabBtn(tab === "crash")} onClick={() => setTab("crash")}>Crash Bets</button>
+        <button className={tabBtn(tab === "transactions")} onClick={() => setTab("transactions")}>Transactions</button>
       </div>
 
       <div className="mb-6 grid gap-3 md:grid-cols-4">
